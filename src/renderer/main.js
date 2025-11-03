@@ -1,6 +1,29 @@
+// Load tab content from separate files
+async function loadTabContent(tabId, htmlFile) {
+    try {
+        const response = await fetch(htmlFile);
+        const html = await response.text();
+        const tabPane = document.getElementById(`${tabId}-tab`);
+        if (tabPane) {
+            tabPane.innerHTML = html;
+        }
+    } catch (error) {
+        console.error(`Error loading ${tabId} tab:`, error);
+    }
+}
+
 // Hide preloader after app loads
-window.addEventListener('DOMContentLoaded', () => {
+window.addEventListener('DOMContentLoaded', async () => {
     const preloader = document.getElementById('preloader');
+    
+    // Load tab content
+    await loadTabContent('translation', 'src/tabs/translation.html');
+    await loadTabContent('info', 'src/tabs/info.html');
+    
+    // Initialize status after tabs are loaded (wait a bit for DOM to update)
+    setTimeout(() => {
+        updateStatus('Monitoring clipboard for Japanese text...', true);
+    }, 100);
     
     // Simulate loading time for smooth experience
     setTimeout(() => {
@@ -95,6 +118,3 @@ window.electronAPI.onTranslationUpdate((data) => {
         updateStatus('Translating...', true);
     }
 });
-
-// Initialize
-updateStatus('Monitoring clipboard for Japanese text...', true);

@@ -1,0 +1,120 @@
+/* Info Tab Styles */
+
+.info-section {
+    display: block;
+}
+
+.info-section h2 {
+    color: #FF8F00;
+    margin-bottom: 15px;
+    margin-top: 20px;
+    font-size: 1.2em;
+    position: relative;
+    padding-left: 15px;
+    font-weight: 700;
+    border-left: 3px solid #FFD54F;
+}
+
+.info-section h2:first-child {
+    margin-top: 0;
+}
+
+.info-section ol,
+.info-section ul {
+    margin-left: 25px;
+    margin-bottom: 25px;
+    color: #666;
+    line-height: 2;
+}
+
+.info-section li {
+    margin-bottom: 8px;
+    position: relative;
+    padding-left: 10px;
+}
+
+.info-section ul {
+    list-style: none;
+}
+
+.info-section ul li::before {
+    content: '▸';
+    position: absolute;
+    left: -15px;
+    top: 0;
+    color: #FFB74D;
+    font-size: 1.2em;
+}
+
+.app-info {
+    margin-top: 40px;
+    padding: 20px;
+    background: #FAFAFA;
+    border-radius: 8px;
+    text-align: center;
+    border-top: 3px solid #FFD54F;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.app-info p {
+    margin-bottom: 8px;
+    color: #333;
+}
+
+.app-info p:first-child {
+    font-size: 1.4em;
+    font-weight: 700;
+    color: #FF6F00;
+    margin-bottom: 5px;
+    text-shadow: 0 1px 2px rgba(255, 152, 0, 0.3);
+}
+
+.app-info .tagline {
+    font-size: 1em;
+    font-style: italic;
+    color: #FF8F00;
+    margin-bottom: 10px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+.app-info .attribution {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid #E0E0E0;
+    font-size: 0.9em;
+    color: #666;
+}
+
+.app-info .attribution a {
+    color: #FF8F00;
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.app-info .attribution a:hover {
+    color: #FFB74D;
+    text-decoration: underline;
+}
+
+/* Info Tab Scrollbar */
+.info-section::-webkit-scrollbar {
+    width: 6px;
+}
+
+.info-section::-webkit-scrollbar-track {
+    background: #F5F5F5;
+    border-radius: 3px;
+}
+
+.info-section::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, #FFB74D 0%, #FFD54F 100%);
+    border-radius: 3px;
+    border: 1px solid #F5F5F5;
+}
+
+.info-section::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, #FFA726 0%, #FFB74D 100%);
+}
+
