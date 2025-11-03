@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Translation Overlay</title>
+    <link rel="stylesheet" href="styles/overlay.css">
+</head>
+<body>
+    <div id="overlayContent" class="overlay-container">
+        <div class="overlay-text" id="overlayText">
+            Translation will appear here...
+        </div>
+    </div>
+    
+    <script>
+        // Auto-resize overlay based on content
+        function resizeOverlay() {
+            const textElement = document.getElementById('overlayText');
+            const container = document.getElementById('overlayContent');
+            
+            // Reset to auto to get natural size
+            textElement.style.height = 'auto';
+            
+            // Get the actual content height
+            const contentHeight = textElement.scrollHeight;
+            const contentWidth = Math.min(800, Math.max(200, textElement.scrollWidth + 40));
+            
+            // Set size
+            container.style.width = contentWidth + 'px';
+            container.style.minHeight = Math.max(50, contentHeight + 30) + 'px';
+        }
+        
+        const { ipcRenderer } = require('electron');
+
+        ipcRenderer.on('show-translation', (event, data) => {
+            const translation = typeof data === 'string' ? data : data.text;
+            const overlayText = document.getElementById('overlayText');
+            overlayText.textContent = translation;
+            
+            // Trigger fade-in animation
+            const container = document.getElementById('overlayContent');
+            container.style.opacity = '0';
+            
+            // Resize after content is set
+            setTimeout(() => {
+                resizeOverlay();
+                container.style.opacity = '1';
+                
+                // Notify main process to resize window if needed
+                const computedWidth = parseInt(container.style.width) || 400;
+                const computedHeight = parseInt(container.style.minHeight) || 150;
+                ipcRenderer.send('resize-overlay', computedWidth, computedHeight);
+            }, 50);
+        });
+    </script>
+</body>
+</html>

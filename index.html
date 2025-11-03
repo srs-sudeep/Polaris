@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Polaris - Language, illuminated</title>
+    <link rel="stylesheet" href="styles/main.css">
+</head>
+<body>
+    <!-- Preloader -->
+    <div class="preloader" id="preloader">
+        <div class="preloader-content">
+            <div class="star-loader">
+                <div class="star-ray ray-1"></div>
+                <div class="star-ray ray-2"></div>
+                <div class="star-ray ray-3"></div>
+                <div class="star-ray ray-4"></div>
+                <div class="star-ray ray-5"></div>
+                <div class="star-ray ray-6"></div>
+                <div class="star-ray ray-7"></div>
+                <div class="star-ray ray-8"></div>
+                <div class="star-center"></div>
+            </div>
+            <h1 class="preloader-title">Polaris</h1>
+            <p class="preloader-tagline">Language, illuminated</p>
+            <div class="loading-bar">
+                <div class="loading-bar-fill"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <!-- Tab Navigation -->
+        <div class="tab-nav">
+            <button class="tab-btn active" data-tab="translation">
+                <span class="tab-icon">🌐</span>
+                <span class="tab-label">Translation</span>
+            </button>
+            <button class="tab-btn" data-tab="info">
+                <span class="tab-icon">ℹ️</span>
+                <span class="tab-label">Info</span>
+            </button>
+        </div>
+
+        <!-- Tab Content -->
+        <div class="tab-content">
+            <!-- Translation Tab -->
+            <div class="tab-pane active" id="translation-tab">
+                <div class="translation-section">
+                    <div class="result-area">
+                        <div class="result-box">
+                            <label>Original Text:</label>
+                            <div id="originalText" class="result-text">
+                                Select Japanese text anywhere and copy it (Ctrl/C or Cmd+C)...
+                            </div>
+                        </div>
+
+                        <div class="result-box">
+                            <label>Translation:</label>
+                            <div id="translationResult" class="result-text translation">
+                                Translation will appear here automatically...
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="status-indicator">
+                        <div id="statusDot" class="status-dot active"></div>
+                        <span id="statusText">Monitoring clipboard...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Info Tab -->
+            <div class="tab-pane" id="info-tab">
+                <div class="info-section">
+                    <h2>📖 How to Use</h2>
+                    <ol>
+                        <li>Select Japanese text anywhere (web page, document, etc.)</li>
+                        <li>Copy it (Ctrl/C or Cmd+C)</li>
+                        <li>Translation appears here automatically!</li>
+                    </ol>
+
+                    <h2>✨ Features</h2>
+                    <ul>
+                        <li>Automatic clipboard monitoring</li>
+                        <li>Instant translation</li>
+                        <li>Overlay window appears when Japanese text detected</li>
+                        <li>Clean, modern interface</li>
+                    </ul>
+
+                    <h2>🚀 Coming Soon</h2>
+                    <ul>
+                        <li>Support for more languages</li>
+                        <li>Translation history</li>
+                        <li>Customizable settings</li>
+                        <li>Dictionary mode</li>
+                    </ul>
+
+                    <div class="app-info">
+                        <p><strong>Polaris</strong></p>
+                        <p class="tagline">Language, illuminated</p>
+                        <p>Version 1.0.0</p>
+                        <p>Made for seamless translation experience</p>
+                        <p class="attribution">Made by <a href="https://github.com/srs-sudeep" target="_blank">@sudeepRanjanSahoo</a></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="src/renderer/main.js"></script>
+</body>
+</html>
