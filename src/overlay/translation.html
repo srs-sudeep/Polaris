@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Translation Overlay</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        .translation-overlay {
+            background: linear-gradient(135deg, #FFB74D 0%, #FFD54F 100%);
+            color: #FFF;
+            padding: 15px 24px;
+            border-radius: 12px;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 0 3px rgba(255, 255, 255, 0.3);
+            font-size: 15px;
+            font-weight: 500;
+            line-height: 1.6;
+            max-width: 100%;
+            word-wrap: break-word;
+            text-align: center;
+            min-height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            animation: fadeInScale 0.3s ease-out;
+            position: relative;
+            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+        }
+        
+        @keyframes fadeInScale {
+            from {
+                opacity: 0;
+                transform: scale(0.8);
+            }
+            to {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+
+        .translation-overlay::before {
+            content: '🌟';
+            position: absolute;
+            top: -8px;
+            left: 12px;
+            font-size: 16px;
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.7; transform: scale(1.1); }
+        }
+    </style>
+</head>
+<body>
+    <div class="translation-overlay" id="translationText">
+        Loading translation...
+    </div>
+
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('Translation overlay loaded');
+            
+            // Listen for translation data via electronAPI
+            if (window.electronAPI && window.electronAPI.onSetTranslation) {
+                window.electronAPI.onSetTranslation((translation) => {
+                    console.log('Received translation:', translation);
+                    const translationEl = document.getElementById('translationText');
+                    if (translationEl) {
+                        translationEl.textContent = translation || 'Translation not available';
+                    }
+                });
+            }
+
+            // Auto-close after 15 seconds
+            setTimeout(() => {
+                window.close();
+            }, 15000);
+        });
+    </script>
+</body>
+</html>
+

@@ -18,7 +18,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     
     // Load tab content
     await loadTabContent('translation', 'src/tabs/translation.html');
+    await loadTabContent('ocr', 'src/tabs/ocr.html');
     await loadTabContent('info', 'src/tabs/info.html');
+    
+    // Initialize OCR tab functionality
+    initializeOCRTab();
     
     // Initialize status after tabs are loaded (wait a bit for DOM to update)
     setTimeout(() => {
@@ -118,3 +122,115 @@ window.electronAPI.onTranslationUpdate((data) => {
         updateStatus('Translating...', true);
     }
 });
+
+// OCR Tab functionality
+function initializeOCRTab() {
+    // Wait for OCR tab to be loaded
+    setTimeout(() => {
+        const selectAreaBtn = document.getElementById('selectAreaBtn');
+        const clearOverlayBtn = document.getElementById('clearOverlayBtn');
+        const showOverlayBtn = document.getElementById('showOverlayBtn');
+        const ocrStatus = document.getElementById('ocrStatus');
+        const ocrOriginalText = document.getElementById('ocrOriginalText');
+        const ocrTranslationResult = document.getElementById('ocrTranslationResult');
+
+        if (selectAreaBtn) {
+            selectAreaBtn.addEventListener('click', async () => {
+                selectAreaBtn.disabled = true;
+                const loadingIndicator = document.getElementById('loadingIndicator');
+                const loadingText = document.getElementById('loadingText');
+                
+                if (loadingIndicator) {
+                    loadingIndicator.style.display = 'none';
+                }
+                ocrStatus.textContent = 'Select an area on your screen...';
+                
+                try {
+                    await window.electronAPI.startScreenSelection();
+                } catch (error) {
+                    console.error('Error starting screen selection:', error);
+                    ocrStatus.textContent = 'Error: ' + error.message;
+                    selectAreaBtn.disabled = false;
+                    if (loadingIndicator) {
+                        loadingIndicator.style.display = 'none';
+                    }
+                }
+            });
+        }
+
+        if (clearOverlayBtn) {
+            clearOverlayBtn.addEventListener('click', async () => {
+                await window.electronAPI.clearOverlay();
+                ocrStatus.textContent = 'Overlay cleared';
+            });
+        }
+
+        if (showOverlayBtn) {
+            showOverlayBtn.addEventListener('click', async () => {
+                await window.electronAPI.showOverlay();
+                ocrStatus.textContent = 'Overlay shown';
+            });
+        }
+
+        // Listen for OCR results
+        window.electronAPI.onOCRResult((result) => {
+            console.log('OCR Result received:', result);
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const loadingText = document.getElementById('loadingText');
+            
+            // Hide loading indicator and show status
+            if (loadingIndicator) {
+                loadingIndicator.style.display = 'none';
+            }
+            if (ocrStatus) {
+                ocrStatus.style.display = 'block';
+            }
+            
+            if (result.success) {
+                console.log('Displaying OCR results in UI');
+                ocrOriginalText.textContent = result.original || 'No text extracted';
+                ocrTranslationResult.textContent = result.translation || 'Translation not available';
+                ocrStatus.textContent = '✓ Translation complete! Check overlay above selected area.';
+                ocrStatus.style.color = '#4CAF50';
+                
+                // Switch to OCR tab to show results
+                document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+                document.querySelector('.tab-btn[data-tab="ocr"]').classList.add('active');
+                document.getElementById('ocr-tab').classList.add('active');
+            } else {
+                // Only show error if it's not a cancellation
+                if (!result.cancelled) {
+                    console.error('OCR Error:', result.error);
+                    ocrStatus.textContent = 'Error: ' + (result.error || 'Unknown error');
+                    ocrStatus.style.color = '#f44336';
+                    ocrOriginalText.textContent = 'Error occurred';
+                    ocrTranslationResult.textContent = result.error || 'Unknown error occurred';
+                } else {
+                    // Selection was cancelled, just reset status
+                    ocrStatus.textContent = 'Selection cancelled. Click button to try again.';
+                    ocrStatus.style.color = '#666';
+                }
+            }
+            
+            if (selectAreaBtn) {
+                selectAreaBtn.disabled = false;
+            }
+        });
+        
+        // Listen for OCR processing stages
+        window.electronAPI.onOCRProcessingStage?.((stage) => {
+            console.log('OCR Processing Stage:', stage.message);
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            const loadingText = document.getElementById('loadingText');
+            
+            if (loadingIndicator && loadingText) {
+                console.log('Showing loading indicator');
+                loadingIndicator.style.display = 'flex';
+                loadingText.textContent = stage.message || 'Processing...';
+                ocrStatus.textContent = stage.message || 'Processing...';
+                ocrStatus.style.display = 'none'; // Hide old status while loading
+            }
+        });
+    }, 200);
+}

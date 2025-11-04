@@ -6,6 +6,7 @@
     <title>Polaris - Language, illuminated</title>
     <link rel="stylesheet" href="styles/main.css">
     <link rel="stylesheet" href="styles/tabs/translation.css">
+    <link rel="stylesheet" href="styles/tabs/ocr.css">
     <link rel="stylesheet" href="styles/tabs/info.css">
 </head>
 <body>
@@ -38,6 +39,10 @@
                 <span class="tab-icon">🌐</span>
                 <span class="tab-label">Translation</span>
             </button>
+            <button class="tab-btn" data-tab="ocr">
+                <span class="tab-icon">📷</span>
+                <span class="tab-label">OCR</span>
+            </button>
             <button class="tab-btn" data-tab="info">
                 <span class="tab-icon">ℹ️</span>
                 <span class="tab-label">Info</span>
@@ -48,6 +53,11 @@
         <div class="tab-content">
             <!-- Translation Tab -->
             <div class="tab-pane active" id="translation-tab">
+                <!-- Content loaded dynamically -->
+            </div>
+
+            <!-- OCR Tab -->
+            <div class="tab-pane" id="ocr-tab">
                 <!-- Content loaded dynamically -->
             </div>
 

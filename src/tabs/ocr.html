@@ -1,0 +1,40 @@
+<div class="ocr-section">
+    <div class="ocr-controls">
+        <button id="selectAreaBtn" class="select-area-btn">
+            <span class="btn-icon">📷</span>
+            <span class="btn-text">Select Screen Area</span>
+        </button>
+        <div class="status-info" id="ocrStatus">
+            Click the button to select an area on your screen
+        </div>
+        <div class="loading-indicator" id="loadingIndicator" style="display: none;">
+            <div class="spinner"></div>
+            <span id="loadingText">Processing...</span>
+        </div>
+    </div>
+
+    <div class="result-area">
+        <div class="result-box">
+            <label>Original Text (OCR):</label>
+            <div id="ocrOriginalText" class="result-text">
+                No text extracted yet...
+            </div>
+        </div>
+
+        <div class="result-box">
+            <label>Translation:</label>
+            <div id="ocrTranslationResult" class="result-text translation">
+                Translation will appear here...
+            </div>
+        </div>
+    </div>
+
+    <div class="overlay-controls">
+        <label>Overlay Settings:</label>
+        <div class="control-group">
+            <button id="clearOverlayBtn" class="control-btn">Clear Overlay</button>
+            <button id="showOverlayBtn" class="control-btn primary">Show Overlay</button>
+        </div>
+    </div>
+</div>
+

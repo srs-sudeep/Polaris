@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Screen Selection</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.3);
+            cursor: crosshair;
+            overflow: hidden;
+        }
+
+        #selectionArea {
+            position: absolute;
+            border: 2px solid #FFD54F;
+            background: rgba(255, 213, 79, 0.1);
+            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.3);
+            pointer-events: none;
+            display: none;
+        }
+
+        #instructions {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.8);
+            color: #FFF;
+            padding: 15px 25px;
+            border-radius: 8px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        #instructions strong {
+            color: #FFD54F;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">
+        <strong>Click and drag</strong> to select an area • Press <strong>ESC</strong> to cancel
+    </div>
+    <div id="selectionArea"></div>
+
+    <script>
+        // Wait for window.electronAPI to be available
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('=== Selection Window DOM Loaded ===');
+            console.log('window.electronAPI:', window.electronAPI);
+            console.log('electronAPI available:', !!window.electronAPI);
+            
+            if (window.electronAPI) {
+                console.log('Available electronAPI methods:', Object.keys(window.electronAPI));
+            } else {
+                console.error('CRITICAL: electronAPI is NOT available!');
+            }
+            
+            let isSelecting = false;
+            let startX = 0;
+            let startY = 0;
+            let selectionArea = document.getElementById('selectionArea');
+
+            // Focus the window to capture keyboard events
+            setTimeout(() => {
+                window.focus();
+                console.log('Window focused');
+            }, 100);
+
+            // Add event listeners to window as well for global keyboard capture
+            window.addEventListener('blur', () => {
+                window.focus();
+            });
+
+            document.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                console.log('Mouse down at:', e.clientX, e.clientY);
+                isSelecting = true;
+                startX = e.clientX;
+                startY = e.clientY;
+                selectionArea.style.display = 'block';
+                selectionArea.style.left = startX + 'px';
+                selectionArea.style.top = startY + 'px';
+                selectionArea.style.width = '0px';
+                selectionArea.style.height = '0px';
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (!isSelecting) return;
+
+                const currentX = e.clientX;
+                const currentY = e.clientY;
+
+                const left = Math.min(startX, currentX);
+                const top = Math.min(startY, currentY);
+                const width = Math.abs(currentX - startX);
+                const height = Math.abs(currentY - startY);
+
+                selectionArea.style.left = left + 'px';
+                selectionArea.style.top = top + 'px';
+                selectionArea.style.width = width + 'px';
+                selectionArea.style.height = height + 'px';
+            });
+
+            document.addEventListener('mouseup', async (e) => {
+                console.log('Mouse up event fired, isSelecting:', isSelecting);
+                if (!isSelecting) return;
+                isSelecting = false;
+
+                const endX = e.clientX;
+                const endY = e.clientY;
+
+                const left = Math.min(startX, endX);
+                const top = Math.min(startY, endY);
+                const width = Math.abs(endX - startX);
+                const height = Math.abs(endY - startY);
+                
+                console.log('Selection area:', { left, top, width, height });
+
+                if (width < 10 || height < 10) {
+                    console.log('Selection too small, cancelling');
+                    selectionArea.style.display = 'none';
+                    // Re-enable button if selection was too small
+                    if (window.electronAPI) {
+                        await window.electronAPI.closeSelectionWindow();
+                        if (window.electronAPI.selectionCancelled) {
+                            window.electronAPI.selectionCancelled();
+                        }
+                    }
+                    return;
+                }
+
+                // Adjust coordinates for window offset (multi-display support)
+                const offsetX = window.WINDOW_OFFSET ? window.WINDOW_OFFSET.x : 0;
+                const offsetY = window.WINDOW_OFFSET ? window.WINDOW_OFFSET.y : 0;
+                
+                const bounds = { 
+                    x: left + offsetX, 
+                    y: top + offsetY, 
+                    width, 
+                    height 
+                };
+                
+                console.log('Final bounds with offset:', bounds);
+                
+                // Send selection to main process
+                if (window.electronAPI) {
+                    console.log('electronAPI available, proceeding with processing');
+                    
+                    try {
+                        // Notify main window to show loading
+                        console.log('Notifying selection complete...');
+                        if (window.electronAPI.notifySelectionComplete) {
+                            window.electronAPI.notifySelectionComplete();
+                        }
+                        
+                        console.log('Processing selected region...');
+                        await window.electronAPI.processSelectedRegion(bounds);
+                        console.log('Region processing initiated');
+                        
+                        console.log('Closing selection window...');
+                        await window.electronAPI.closeSelectionWindow();
+                    } catch (error) {
+                        console.error('Error processing selection:', error);
+                        console.error('Error stack:', error.stack);
+                        // Still try to close the window
+                        try {
+                            await window.electronAPI.closeSelectionWindow();
+                        } catch (closeError) {
+                            console.error('Error closing window:', closeError);
+                        }
+                    }
+                } else {
+                    console.error('electronAPI not available!');
+                }
+            });
+
+            // Handle ESC key - single unified handler
+            const handleEscape = async (e) => {
+                console.log('Key pressed:', e.key, e.keyCode);
+                if (e.key === 'Escape' || e.keyCode === 27) {
+                    console.log('ESC key detected, cancelling selection');
+                    e.preventDefault();
+                    e.stopPropagation();
+                    
+                    if (window.electronAPI) {
+                        try {
+                            if (window.electronAPI.selectionCancelled) {
+                                window.electronAPI.selectionCancelled();
+                            }
+                            await window.electronAPI.closeSelectionWindow();
+                        } catch (error) {
+                            console.error('Error handling ESC:', error);
+                        }
+                    } else {
+                        console.error('electronAPI not available for ESC handler');
+                    }
+                }
+            };
+            
+            // Add to both window and document for maximum coverage
+            window.addEventListener('keydown', handleEscape, true);
+            document.addEventListener('keydown', handleEscape, true);
+            
+            // Also add to body
+            document.body.addEventListener('keydown', handleEscape, true);
+
+            // Prevent default behavior
+            document.addEventListener('contextmenu', (e) => e.preventDefault());
+            document.addEventListener('selectstart', (e) => e.preventDefault());
+        });
+    </script>
+</body>
+</html>
+
