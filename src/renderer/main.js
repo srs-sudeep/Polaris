@@ -32,6 +32,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     // Simulate loading time for smooth experience
     setTimeout(() => {
         preloader.classList.add('fade-out');
+        // Show app container after preloader starts fading
+        const appContainer = document.querySelector('.app-container');
+        if (appContainer) {
+            appContainer.classList.add('loaded');
+        }
         // Remove preloader from DOM after fade animation
         setTimeout(() => {
             preloader.style.display = 'none';
