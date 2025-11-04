@@ -19,6 +19,15 @@
     margin-top: 0;
 }
 
+.info-section h3 {
+    color: #FF6F00;
+    margin-top: 20px;
+    margin-bottom: 10px;
+    font-size: 1.05em;
+    font-weight: 600;
+    padding-left: 10px;
+}
+
 .info-section ol,
 .info-section ul {
     margin-left: 25px;

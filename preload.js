@@ -47,5 +47,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.send('selection-complete'),
   
   onSetTranslation: (callback) =>
-    ipcRenderer.on('set-translation', (event, data) => callback(data))
+    ipcRenderer.on('set-translation', (event, data) => callback(data)),
+  
+  onTriggerOCRSnip: (callback) =>
+    ipcRenderer.on('trigger-ocr-snip', () => callback())
 });

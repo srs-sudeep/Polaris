@@ -171,6 +171,21 @@ app.whenReady().then(() => {
     console.log('Could not create tray:', error.message);
   }
 
+  // Register global shortcut for OCR snip (Ctrl+Shift+O)
+  const ret = globalShortcut.register('CommandOrControl+Shift+O', () => {
+    console.log('OCR shortcut triggered');
+    if (mainWindow && mainWindow.webContents) {
+      // Trigger OCR snip from renderer
+      mainWindow.webContents.send('trigger-ocr-snip');
+    }
+  });
+
+  if (!ret) {
+    console.log('Failed to register OCR shortcut');
+  } else {
+    console.log('✓ OCR shortcut registered (Ctrl+Shift+O)');
+  }
+
   // Start clipboard monitoring
   clipboardCheckInterval = setInterval(checkClipboard, 500);
   console.log('✓ Clipboard monitoring started - window will appear when Japanese text is detected');
@@ -344,13 +359,24 @@ function createOverlayWindow(x, y, width, height, translation) {
   currentOverlayData = { x, y, width, height, translation };
 
   // Calculate overlay size based on translation length
+  // More accurate calculation for very large texts
   const baseWidth = Math.max(width, 250);
   const charCount = translation.length;
-  const estimatedWidth = Math.min(Math.max(baseWidth, charCount * 8), 700);
-  const estimatedHeight = Math.max(70, Math.ceil(charCount / 50) * 30);
+  
+  // Estimate width: ~8-10 pixels per character, with min/max constraints
+  const charsPerLine = Math.floor(baseWidth / 9); // Approximate characters per line
+  const estimatedLines = Math.ceil(charCount / charsPerLine);
+  const lineHeight = 30; // Height per line
+  const padding = 40; // Top and bottom padding
+  
+  // Calculate width: ensure it fits the text but has reasonable limits
+  const estimatedWidth = Math.min(Math.max(baseWidth, Math.min(charCount * 9, 800)), 1000);
+  
+  // Calculate height: allow for multiple lines, with maximum to prevent too large
+  const estimatedHeight = Math.min(Math.max(70, estimatedLines * lineHeight + padding), 600);
   
   const overlayWidth = estimatedWidth;
-  const overlayHeight = Math.min(estimatedHeight, 200);
+  const overlayHeight = estimatedHeight;
 
   // Position overlay above the selected area, or below if not enough space
   let overlayX = x;
@@ -383,6 +409,9 @@ function createOverlayWindow(x, y, width, height, translation) {
       preload: path.join(__dirname, 'preload.js')
     }
   });
+  
+  // Store dimensions for dynamic resizing
+  overlayWindow.overlayDimensions = { width: overlayWidth, height: overlayHeight };
 
   overlayWindow.loadFile('src/overlay/translation.html');
   overlayWindow.webContents.once('did-finish-load', () => {

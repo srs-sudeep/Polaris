@@ -123,6 +123,24 @@ window.electronAPI.onTranslationUpdate((data) => {
     }
 });
 
+// Listen for OCR hotkey trigger from main process
+window.electronAPI.onTriggerOCRSnip(() => {
+    console.log('OCR hotkey triggered');
+    // Switch to OCR tab and trigger selection
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    document.querySelector('.tab-btn[data-tab="ocr"]').classList.add('active');
+    document.getElementById('ocr-tab').classList.add('active');
+    
+    // Wait a bit for tab to be visible, then trigger button click
+    setTimeout(() => {
+        const selectAreaBtn = document.getElementById('selectAreaBtn');
+        if (selectAreaBtn) {
+            selectAreaBtn.click();
+        }
+    }, 100);
+});
+
 // OCR Tab functionality
 function initializeOCRTab() {
     // Wait for OCR tab to be loaded
