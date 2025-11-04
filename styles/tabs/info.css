@@ -87,22 +87,28 @@
     letter-spacing: 0.5px;
 }
 
-.app-info .attribution {
-    margin-top: 15px;
-    padding-top: 15px;
+/* Attribution Footer */
+.attribution-footer {
+    margin-top: 30px;
+    padding-top: 20px;
     border-top: 1px solid #E0E0E0;
-    font-size: 0.9em;
+    text-align: center;
+}
+
+.attribution-footer p {
+    margin: 0;
+    font-size: 0.85em;
     color: #666;
 }
 
-.app-info .attribution a {
+.attribution-footer a {
     color: #FF8F00;
     text-decoration: none;
     font-weight: 600;
     transition: color 0.3s ease;
 }
 
-.app-info .attribution a:hover {
+.attribution-footer a:hover {
     color: #FFB74D;
     text-decoration: underline;
 }

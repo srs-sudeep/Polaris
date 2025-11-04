@@ -1,6 +1,12 @@
-# Polaris
+<div align="center">
+  <img src="assets/icon.png" alt="Polaris Logo" width="200" height="200">
+  
+  # Polaris
+  
+  **Language, illuminated**
+</div>
 
-**Language, illuminated**
+---
 
 A sleek desktop application that automatically translates Japanese text to English. The translation window appears as an overlay when Japanese text is detected, providing a seamless translation experience.
 
@@ -37,13 +43,46 @@ A sleek desktop application that automatically translates Japanese text to Engli
    npm start
    ```
 
+## 📸 Screenshots
+
+### Main Window
+<!-- Add screenshot of main window here -->
+![Main Window](./screenshots/main-window.png)
+
+### Translation Mode
+<!-- Add screenshot of translation mode here -->
+![Translation Mode](./screenshots/translation-mode.png)
+
+### OCR Snip Mode
+<!-- Add screenshot of OCR snip mode here -->
+![OCR Snip Mode](./screenshots/ocr-snip-mode.png)
+
+### Overlay Translation
+<!-- Add screenshot of overlay translation here -->
+![Overlay Translation](./screenshots/overlay-translation.png)
+
+## 🎥 Demo Video
+
+<!-- Add demo video here -->
+[![Demo Video](./screenshots/demo-thumbnail.png)](./demo-video.mp4)
+
+Click the thumbnail above to watch the full demo video, or [view on YouTube](./demo-video.mp4)
+
 ## How to Use
 
-1. **Start the app** - It runs in the background (system tray)
+### 📋 Translation Mode
+1. **Start the app** - The main window opens automatically
 2. **Select Japanese text** anywhere on your screen (web page, document, etc.)
-3. **Copy it** (Ctrl/C or Cmd+C) - The translation window appears automatically as an overlay!
+3. **Copy it** (Ctrl/C or Cmd+C) - The translation window appears automatically!
 
-**That's it!** The window appears over your current application, showing the translation instantly. Use the tabs to navigate between Translation and Info screens.
+**That's it!** The window shows the translation instantly. Use the tabs to navigate between Info, Translation, and OCR screens.
+
+### 📷 OCR Snip Mode
+1. **Open the OCR tab** or press **Ctrl+Shift+O** (Cmd+Shift+O on Mac)
+2. **Click "Select Screen Area"** button
+3. **Drag to select** the area containing Japanese text
+4. **Translation overlay appears** directly over the selected area
+5. **View results** in the OCR tab for extracted and translated text
 
 ## Building for Distribution
 

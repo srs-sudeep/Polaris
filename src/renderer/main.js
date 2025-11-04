@@ -92,8 +92,12 @@ window.electronAPI.onTranslationUpdate((data) => {
         document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
         document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
         
-        document.querySelector('.tab-btn[data-tab="translation"]').classList.add('active');
-        document.getElementById('translation-tab').classList.add('active');
+        const translationTabBtn = document.querySelector('.tab-btn[data-tab="translation"]');
+        const translationTab = document.getElementById('translation-tab');
+        if (translationTabBtn && translationTab) {
+            translationTabBtn.classList.add('active');
+            translationTab.classList.add('active');
+        }
     }
     
     if (data.original) {
@@ -129,8 +133,12 @@ window.electronAPI.onTriggerOCRSnip(() => {
     // Switch to OCR tab and trigger selection
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-    document.querySelector('.tab-btn[data-tab="ocr"]').classList.add('active');
-    document.getElementById('ocr-tab').classList.add('active');
+    const ocrTabBtn = document.querySelector('.tab-btn[data-tab="ocr"]');
+    const ocrTab = document.getElementById('ocr-tab');
+    if (ocrTabBtn && ocrTab) {
+        ocrTabBtn.classList.add('active');
+        ocrTab.classList.add('active');
+    }
     
     // Wait a bit for tab to be visible, then trigger button click
     setTimeout(() => {
@@ -214,8 +222,12 @@ function initializeOCRTab() {
                 // Switch to OCR tab to show results
                 document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
                 document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
-                document.querySelector('.tab-btn[data-tab="ocr"]').classList.add('active');
-                document.getElementById('ocr-tab').classList.add('active');
+                const ocrTabBtn = document.querySelector('.tab-btn[data-tab="ocr"]');
+                const ocrTab = document.getElementById('ocr-tab');
+                if (ocrTabBtn && ocrTab) {
+                    ocrTabBtn.classList.add('active');
+                    ocrTab.classList.add('active');
+                }
             } else {
                 // Only show error if it's not a cancellation
                 if (!result.cancelled) {
