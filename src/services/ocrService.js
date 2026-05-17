@@ -10,9 +10,8 @@ async function initializeOCR() {
   if (!worker) {
     worker = await createWorker('jpn', 1, {
       logger: m => {
-        // Optional: Remove console.log for production
         if (m.status === 'recognizing text') {
-          // Only log progress occasionally
+          // Keep OCR quiet in production; progress can be surfaced by callers.
         }
       }
     });
@@ -65,10 +64,18 @@ async function captureScreen() {
 }
 
 async function extractTextFromImage(imageBuffer) {
+  const result = await recognizeImage(imageBuffer);
+  return result.text;
+}
+
+async function recognizeImage(imageBuffer) {
   try {
     const ocrWorker = await initializeOCR();
-    const { data: { text } } = await ocrWorker.recognize(imageBuffer);
-    return text.trim();
+    const { data } = await ocrWorker.recognize(imageBuffer);
+    return {
+      text: normalizeOCRText(data?.text),
+      blocks: normalizeOCRBlocks(data)
+    };
   } catch (error) {
     console.error('OCR Error:', error);
     throw new Error(`Failed to extract text: ${error.message}`);
@@ -85,9 +92,67 @@ async function extractTextFromRegion(x, y, width, height) {
   return await extractTextFromImage(imageBuffer);
 }
 
+function normalizeOCRText(text) {
+  return String(text || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function normalizeOCRBlocks(data) {
+  const candidates = data?.paragraphs?.length
+    ? data.paragraphs
+    : data?.lines?.length
+      ? data.lines
+      : data?.blocks || [];
+
+  return candidates
+    .map((item) => {
+      const text = normalizeOCRText(item?.text);
+      if (!text) {
+        return null;
+      }
+
+      return {
+        text,
+        confidence: Math.round(item?.confidence ?? item?.conf ?? 0),
+        bbox: normalizeBoundingBox(item?.bbox)
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeBoundingBox(bbox) {
+  if (!bbox) {
+    return null;
+  }
+
+  const x0 = Number(bbox.x0 ?? bbox.left ?? bbox.x ?? 0);
+  const y0 = Number(bbox.y0 ?? bbox.top ?? bbox.y ?? 0);
+  const x1 = Number(bbox.x1 ?? x0 + Number(bbox.width ?? 0));
+  const y1 = Number(bbox.y1 ?? y0 + Number(bbox.height ?? 0));
+
+  return {
+    x: x0,
+    y: y0,
+    width: Math.max(0, x1 - x0),
+    height: Math.max(0, y1 - y0)
+  };
+}
+
+async function terminateOCR() {
+  if (worker) {
+    await worker.terminate();
+    worker = null;
+  }
+}
+
 module.exports = {
   captureScreen,
   extractTextFromImage,
   extractTextFromRegion,
-  initializeOCR
+  initializeOCR,
+  recognizeImage,
+  terminateOCR
 };

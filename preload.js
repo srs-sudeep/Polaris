@@ -6,9 +6,33 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   getClipboard: () => 
     ipcRenderer.invoke('get-clipboard'),
+
+  getAppState: () =>
+    ipcRenderer.invoke('get-app-state'),
+
+  getHistory: () =>
+    ipcRenderer.invoke('get-history'),
+
+  translateSelection: () =>
+    ipcRenderer.invoke('translate-selection'),
+
+  translateClipboardNow: () =>
+    ipcRenderer.invoke('translate-clipboard-now'),
+
+  toggleLiveTranslation: () =>
+    ipcRenderer.invoke('toggle-live-translation'),
+
+  toggleClipboardMonitoring: () =>
+    ipcRenderer.invoke('toggle-clipboard-monitoring'),
   
   onTranslationUpdate: (callback) => 
     ipcRenderer.on('translation-update', (event, data) => callback(data)),
+
+  onAppStateUpdate: (callback) =>
+    ipcRenderer.on('app-state-update', (event, data) => callback(data)),
+
+  onHistoryUpdate: (callback) =>
+    ipcRenderer.on('history-update', (event, data) => callback(data)),
   
   resizeWindow: (width, height) => 
     ipcRenderer.invoke('resize-window', width, height),

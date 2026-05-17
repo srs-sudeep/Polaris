@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Translation Overlay</title>
+    <title>Polaris Overlay</title>
     <style>
         * {
             margin: 0;
@@ -11,107 +11,204 @@
             box-sizing: border-box;
         }
 
+        html,
         body {
+            width: 100%;
+            height: 100%;
             background: transparent;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             overflow: hidden;
+            pointer-events: none;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
         }
 
         .translation-overlay {
-            background: linear-gradient(135deg, #FFB74D 0%, #FFD54F 100%);
-            color: #FFF;
-            padding: 15px 24px;
-            border-radius: 12px;
-            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5), 0 0 0 3px rgba(255, 255, 255, 0.3);
-            font-size: 15px;
-            font-weight: 500;
-            line-height: 1.6;
-            max-width: 100%;
-            max-height: 100%;
-            word-wrap: break-word;
-            text-align: left;
-            min-height: 60px;
+            width: 100%;
+            height: 100%;
             display: flex;
-            align-items: flex-start;
-            justify-content: flex-start;
-            animation: fadeInScale 0.3s ease-out;
-            position: relative;
-            text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-            overflow-y: auto;
-            overflow-x: hidden;
-            box-sizing: border-box;
+            flex-direction: column;
+            gap: 10px;
+            padding: 14px 16px;
+            border: 1px solid rgba(255, 213, 79, 0.45);
+            border-radius: 14px;
+            background:
+                linear-gradient(135deg, rgba(18, 18, 22, 0.94), rgba(36, 31, 22, 0.91)),
+                linear-gradient(135deg, rgba(255, 183, 77, 0.18), rgba(255, 213, 79, 0.12));
+            color: #fff8e1;
+            box-shadow:
+                0 14px 44px rgba(0, 0, 0, 0.38),
+                0 0 0 1px rgba(255, 255, 255, 0.07) inset;
+            animation: overlayIn 160ms ease-out;
+            overflow: hidden;
         }
-        
-        .translation-overlay::-webkit-scrollbar {
+
+        .translation-overlay[data-mode="error"] {
+            border-color: rgba(255, 138, 128, 0.6);
+            background: linear-gradient(135deg, rgba(42, 18, 18, 0.95), rgba(24, 19, 22, 0.92));
+        }
+
+        .overlay-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            flex: 0 0 auto;
+        }
+
+        .source-label {
+            display: inline-flex;
+            align-items: center;
+            min-width: 0;
+            color: #ffd54f;
+            font-size: 11px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .language-pair {
+            color: rgba(255, 248, 225, 0.7);
+            font-size: 11px;
+            font-weight: 700;
+            white-space: nowrap;
+        }
+
+        .translation-text {
+            flex: 1 1 auto;
+            min-height: 0;
+            overflow-y: auto;
+            color: #ffffff;
+            font-size: 15px;
+            font-weight: 650;
+            line-height: 1.45;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .original-text {
+            flex: 0 0 auto;
+            max-height: 72px;
+            overflow: hidden;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: rgba(255, 248, 225, 0.68);
+            font-size: 12px;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
+
+        .original-text:empty {
+            display: none;
+        }
+
+        .overlay-footer {
+            flex: 0 0 auto;
+            display: flex;
+            justify-content: flex-end;
+            color: rgba(255, 213, 79, 0.76);
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+        }
+
+        .translation-text::-webkit-scrollbar {
             width: 6px;
         }
-        
-        .translation-overlay::-webkit-scrollbar-track {
-            background: rgba(255, 255, 255, 0.2);
+
+        .translation-text::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.08);
             border-radius: 3px;
         }
-        
-        .translation-overlay::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.5);
+
+        .translation-text::-webkit-scrollbar-thumb {
+            background: rgba(255, 213, 79, 0.48);
             border-radius: 3px;
         }
-        
-        .translation-overlay::-webkit-scrollbar-thumb:hover {
-            background: rgba(255, 255, 255, 0.7);
-        }
-        
-        @keyframes fadeInScale {
+
+        @keyframes overlayIn {
             from {
                 opacity: 0;
-                transform: scale(0.8);
+                transform: translateY(4px) scale(0.98);
             }
             to {
                 opacity: 1;
-                transform: scale(1);
+                transform: translateY(0) scale(1);
             }
-        }
-
-        .translation-overlay::before {
-            content: '🌟';
-            position: absolute;
-            top: -8px;
-            left: 12px;
-            font-size: 16px;
-            animation: pulse 2s ease-in-out infinite;
-        }
-        
-        @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.7; transform: scale(1.1); }
         }
     </style>
 </head>
 <body>
-    <div class="translation-overlay" id="translationText">
-        Loading translation...
-    </div>
+    <section class="translation-overlay" id="overlay" data-mode="translation">
+        <header class="overlay-header">
+            <div class="source-label" id="sourceLabel">Translation</div>
+            <div class="language-pair" id="languagePair">JA -> EN</div>
+        </header>
+        <main class="translation-text" id="translationText">Loading translation...</main>
+        <aside class="original-text" id="originalText"></aside>
+        <footer class="overlay-footer">Polaris</footer>
+    </section>
 
     <script>
-        window.addEventListener('DOMContentLoaded', () => {
-            console.log('Translation overlay loaded');
-            
-            // Listen for translation data via electronAPI
-            if (window.electronAPI && window.electronAPI.onSetTranslation) {
-                window.electronAPI.onSetTranslation((translation) => {
-                    console.log('Received translation:', translation);
-                    const translationEl = document.getElementById('translationText');
-                    if (translationEl) {
-                        translationEl.textContent = translation || 'Translation not available';
-                    }
-                });
+        let closeTimer = null;
+
+        function normalizePayload(payload) {
+            if (typeof payload === 'string') {
+                return {
+                    mode: 'translation',
+                    sourceLabel: 'Translation',
+                    translation: payload,
+                    original: '',
+                    sourceLang: 'ja',
+                    targetLang: 'en',
+                    autoCloseMs: 15000
+                };
             }
 
-            // Auto-close after 15 seconds
-            setTimeout(() => {
-                window.close();
-            }, 15000);
+            return {
+                mode: payload?.mode || 'translation',
+                sourceLabel: payload?.sourceLabel || 'Translation',
+                translation: payload?.translation || 'Translation not available',
+                original: payload?.original || '',
+                sourceLang: payload?.sourceLang || 'ja',
+                targetLang: payload?.targetLang || 'en',
+                autoCloseMs: payload?.autoCloseMs ?? 15000
+            };
+        }
+
+        function renderPayload(payload) {
+            const data = normalizePayload(payload);
+            const overlay = document.getElementById('overlay');
+            const sourceLabel = document.getElementById('sourceLabel');
+            const languagePair = document.getElementById('languagePair');
+            const translationText = document.getElementById('translationText');
+            const originalText = document.getElementById('originalText');
+
+            overlay.dataset.mode = data.mode;
+            sourceLabel.textContent = data.sourceLabel;
+            languagePair.textContent = `${data.sourceLang.toUpperCase()} -> ${data.targetLang.toUpperCase()}`;
+            translationText.textContent = data.translation;
+            originalText.textContent = data.original;
+
+            if (closeTimer) {
+                clearTimeout(closeTimer);
+            }
+
+            if (data.autoCloseMs > 0) {
+                closeTimer = setTimeout(() => {
+                    window.close();
+                }, data.autoCloseMs);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            if (window.electronAPI && window.electronAPI.onSetTranslation) {
+                window.electronAPI.onSetTranslation(renderPayload);
+            }
         });
     </script>
 </body>
 </html>
-

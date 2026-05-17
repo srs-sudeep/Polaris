@@ -8,7 +8,9 @@
 
 ---
 
-A sleek desktop application that automatically translates Japanese text to English. The translation window appears as an overlay when Japanese text is detected, providing a seamless translation experience.
+A sleek desktop translation assistant that helps translate Japanese text to English without breaking your flow. Polaris began as an easy translation tool, but its larger goal is to become a system-wide translation layer: clipboard translation, selected text translation, OCR snip translation, scroll translation, and assistant-style overlays that can place translated text directly over any app or page.
+
+For the expanded product direction, see [Polaris Product Concept](docs/POLARIS_CONCEPT.md).
 
 ## Features
 
@@ -27,6 +29,13 @@ A sleek desktop application that automatically translates Japanese text to Engli
 - No window visible until needed
 - Automatic clipboard monitoring
 - Instant translation
+
+🧭 **Polaris Concept Direction**
+- Translate selected text with a global hotkey
+- Translate text that cannot be copied using OCR snip mode
+- Place translated text directly over the source area
+- Support future scroll translation for long pages and documents
+- Work across browsers, PDFs, documents, games, images, and desktop apps
 
 ## Installation
 

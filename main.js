@@ -1,7 +1,11 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, Tray, Menu, clipboard, screen, desktopCapturer } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, Tray, Menu, clipboard, screen, desktopCapturer, nativeImage } = require('electron');
 const path = require('path');
-const { translateText, detectLanguage } = require('./src/services/translationService');
-const { extractTextFromImage } = require('./src/services/ocrService');
+const { execFile } = require('child_process');
+const { promisify } = require('util');
+const { translateText, detectLanguage, containsJapanese, getProviderStatus } = require('./src/services/translationService');
+const { extractTextFromImage, terminateOCR } = require('./src/services/ocrService');
+
+const execFileAsync = promisify(execFile);
 
 let mainWindow = null;
 let overlayWindow = null;
@@ -10,6 +14,27 @@ let tray = null;
 let lastClipboardText = '';
 let clipboardCheckInterval = null;
 let currentOverlayData = null;
+let selectedTextBusy = false;
+let liveTranslationBusy = false;
+let liveTranslationInterval = null;
+let liveLastSignature = '';
+
+const appState = {
+  clipboardMonitoring: true,
+  liveTranslationEnabled: false,
+  sourceLang: 'ja',
+  targetLang: 'en',
+  liveStatus: 'Stopped',
+  shortcuts: {
+    selectedText: 'Ctrl/Cmd+Shift+T',
+    ocrSnip: 'Ctrl/Cmd+Shift+O',
+    liveScreen: 'Ctrl/Cmd+Shift+S'
+  },
+  provider: getProviderStatus().currentProvider
+};
+
+const translationHistory = [];
+const MAX_HISTORY_ITEMS = 30;
 
 function createMainWindow() {
   if (mainWindow) {
@@ -93,67 +118,126 @@ function positionWindowOnCurrentScreen() {
   }
 }
 
+function sendToMain(channel, payload) {
+  if (mainWindow && mainWindow.webContents && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel, payload);
+  }
+}
+
+function broadcastAppState() {
+  sendToMain('app-state-update', {
+    ...appState,
+    historyCount: translationHistory.length
+  });
+
+  if (tray) {
+    tray.setContextMenu(buildTrayMenu());
+  }
+}
+
+function addTranslationHistory(entry) {
+  const historyItem = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    createdAt: new Date().toISOString(),
+    ...entry
+  };
+
+  translationHistory.unshift(historyItem);
+  translationHistory.splice(MAX_HISTORY_ITEMS);
+  sendToMain('history-update', translationHistory);
+  broadcastAppState();
+}
+
+async function translateAndPublish(text, options = {}) {
+  const original = String(text || '').trim();
+  if (!original) {
+    throw new Error('No text provided for translation');
+  }
+
+  const mode = options.mode || 'translation';
+  const sourceLang = options.sourceLang || appState.sourceLang;
+  const targetLang = options.targetLang || appState.targetLang;
+  const sourceLabel = options.sourceLabel || 'Text';
+
+  if (options.showMain) {
+    positionWindowOnCurrentScreen();
+  }
+
+  sendToMain('translation-update', {
+    mode,
+    sourceLabel,
+    original,
+    translating: true
+  });
+
+  const resolvedSourceLang = sourceLang === 'auto' ? await detectLanguage(original) : sourceLang;
+  const translation = await translateText(original, resolvedSourceLang, targetLang);
+
+  const result = {
+    mode,
+    sourceLabel,
+    original,
+    translation,
+    sourceLang: resolvedSourceLang,
+    targetLang
+  };
+
+  sendToMain('translation-update', result);
+  addTranslationHistory(result);
+
+  if (options.overlay) {
+    createOverlayWindow(
+      options.overlay.x,
+      options.overlay.y,
+      options.overlay.width,
+      options.overlay.height,
+      {
+        ...result,
+        autoCloseMs: options.autoCloseMs ?? 18000
+      },
+      options.overlayOptions || {}
+    );
+  }
+
+  return result;
+}
+
 async function checkClipboard() {
   try {
+    if (!appState.clipboardMonitoring) {
+      return;
+    }
+
     const currentText = clipboard.readText();
-    
-    // Only process if clipboard changed and contains text
+
     if (currentText && currentText !== lastClipboardText && currentText.trim().length > 0) {
-      // Check if text contains Japanese characters
-      const japaneseRegex = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/;
-      
-      if (japaneseRegex.test(currentText)) {
+      if (containsJapanese(currentText)) {
         lastClipboardText = currentText;
-        
-        // Position window on the same screen as cursor and show it
-        positionWindowOnCurrentScreen();
-        
-        // Send translation update to window
-        if (mainWindow && mainWindow.webContents) {
-          mainWindow.webContents.send('translation-update', {
-            original: currentText.trim(),
-            translating: true
-          });
-        } else {
-          // Wait a bit for window to load, then send translation
-          setTimeout(() => {
-            if (mainWindow && mainWindow.webContents) {
-              mainWindow.webContents.send('translation-update', {
-                original: currentText.trim(),
-                translating: true
-              });
-            }
-          }, 300);
-        }
-        
-        // Translate the text
+
         try {
-          const translation = await translateText(currentText.trim(), 'ja', 'en');
-          
-        // Send translation to main window
-        if (mainWindow && mainWindow.webContents) {
-          mainWindow.webContents.send('translation-update', {
-            original: currentText.trim(),
-            translation: translation
+          const result = await translateAndPublish(currentText, {
+            mode: 'clipboard',
+            sourceLabel: 'Clipboard',
+            showMain: true
           });
-          
-          // Ensure window stays on top after translation
-          mainWindow.setAlwaysOnTop(true);
-          mainWindow.focus();
-          mainWindow.moveTop();
-        }
+
+          if (mainWindow) {
+            mainWindow.setAlwaysOnTop(true);
+            mainWindow.focus();
+            mainWindow.moveTop();
+          }
+
+          return result;
         } catch (error) {
           console.error('Translation error:', error);
-          if (mainWindow && mainWindow.webContents) {
-            mainWindow.webContents.send('translation-update', {
-              error: error.message
-            });
-          }
+          sendToMain('translation-update', {
+            error: error.message
+          });
         }
       }
     }
   } catch (error) {
-    // Clipboard might be empty or not text
+    console.log('Clipboard check skipped:', error.message);
   }
 }
 
@@ -171,24 +255,12 @@ app.whenReady().then(() => {
     console.log('Could not create tray:', error.message);
   }
 
-  // Register global shortcut for OCR snip (Ctrl+Shift+O)
-  const ret = globalShortcut.register('CommandOrControl+Shift+O', () => {
-    console.log('OCR shortcut triggered');
-    if (mainWindow && mainWindow.webContents) {
-      // Trigger OCR snip from renderer
-      mainWindow.webContents.send('trigger-ocr-snip');
-    }
-  });
-
-  if (!ret) {
-    console.log('Failed to register OCR shortcut');
-  } else {
-    console.log('✓ OCR shortcut registered (Ctrl+Shift+O)');
-  }
+  registerShortcuts();
 
   // Start clipboard monitoring
   clipboardCheckInterval = setInterval(checkClipboard, 500);
   console.log('✓ Clipboard monitoring started - window will appear when Japanese text is detected');
+  broadcastAppState();
 });
 
 app.on('activate', () => {
@@ -204,12 +276,100 @@ app.on('window-all-closed', () => {
   }
 });
 
-app.on('will-quit', () => {
+app.on('will-quit', async () => {
   if (clipboardCheckInterval) {
     clearInterval(clipboardCheckInterval);
   }
+  stopLiveTranslation();
   globalShortcut.unregisterAll();
+  await terminateOCR().catch(() => {});
 });
+
+function registerShortcuts() {
+  const shortcuts = [
+    {
+      accelerator: 'CommandOrControl+Shift+T',
+      label: 'selected text translation',
+      handler: () => translateCurrentSelection()
+    },
+    {
+      accelerator: 'CommandOrControl+Shift+O',
+      label: 'OCR snip',
+      handler: () => {
+        console.log('OCR shortcut triggered');
+        sendToMain('trigger-ocr-snip');
+      }
+    },
+    {
+      accelerator: 'CommandOrControl+Shift+S',
+      label: 'live screen translation',
+      handler: () => toggleLiveTranslation()
+    }
+  ];
+
+  for (const shortcut of shortcuts) {
+    const registered = globalShortcut.register(shortcut.accelerator, shortcut.handler);
+    if (!registered) {
+      console.log(`Failed to register ${shortcut.label} shortcut (${shortcut.accelerator})`);
+    } else {
+      console.log(`✓ ${shortcut.label} shortcut registered (${shortcut.accelerator})`);
+    }
+  }
+}
+
+function buildTrayMenu() {
+  return Menu.buildFromTemplate([
+    {
+      label: 'Show Polaris',
+      click: () => {
+        positionWindowOnCurrentScreen();
+      }
+    },
+    {
+      label: 'Translate Selected Text',
+      accelerator: 'CommandOrControl+Shift+T',
+      click: () => {
+        translateCurrentSelection();
+      }
+    },
+    {
+      label: 'OCR Snip Translate',
+      accelerator: 'CommandOrControl+Shift+O',
+      click: () => {
+        sendToMain('trigger-ocr-snip');
+        positionWindowOnCurrentScreen();
+      }
+    },
+    {
+      label: appState.liveTranslationEnabled ? 'Stop Live Screen Translate' : 'Start Live Screen Translate',
+      accelerator: 'CommandOrControl+Shift+S',
+      click: () => {
+        toggleLiveTranslation();
+      }
+    },
+    { type: 'separator' },
+    {
+      label: appState.clipboardMonitoring ? 'Pause Clipboard Monitoring' : 'Resume Clipboard Monitoring',
+      click: () => {
+        appState.clipboardMonitoring = !appState.clipboardMonitoring;
+        broadcastAppState();
+      }
+    },
+    {
+      label: 'Clear Overlay',
+      click: () => {
+        clearOverlay();
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => {
+        app.quit();
+      }
+    }
+  ]);
+}
 
 function createTray() {
   try {
@@ -225,24 +385,8 @@ function createTray() {
       const icon = nativeImage.createEmpty();
       tray = new Tray(icon);
     }
-    
-    const contextMenu = Menu.buildFromTemplate([
-      {
-        label: 'Show Window',
-        click: () => {
-          positionWindowOnCurrentScreen();
-        }
-      },
-      {
-        label: 'Quit',
-        click: () => {
-          app.quit();
-        }
-      }
-    ]);
-    
     tray.setToolTip('Polaris - Language, illuminated');
-    tray.setContextMenu(contextMenu);
+    tray.setContextMenu(buildTrayMenu());
     
     tray.on('click', () => {
       positionWindowOnCurrentScreen();
@@ -251,6 +395,297 @@ function createTray() {
     console.log('Tray creation skipped:', error.message);
     // App will still work without tray icon
   }
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function translateCurrentSelection() {
+  if (selectedTextBusy) {
+    return { success: false, error: 'Selected text translation is already running' };
+  }
+
+  selectedTextBusy = true;
+
+  try {
+    const selectedText = await readSelectedTextViaClipboard();
+
+    if (!selectedText) {
+      throw new Error('Select text in any app, then press Ctrl/Cmd+Shift+T again.');
+    }
+
+    const cursor = screen.getCursorScreenPoint();
+    const overlayBounds = {
+      x: cursor.x + 16,
+      y: cursor.y + 16,
+      width: 420,
+      height: 120
+    };
+
+    const result = await translateAndPublish(selectedText, {
+      mode: 'selected-text',
+      sourceLabel: 'Selected text',
+      showMain: false,
+      overlay: overlayBounds,
+      overlayOptions: {
+        placement: 'cursor',
+        clickThrough: true
+      }
+    });
+
+    return { success: true, ...result };
+  } catch (error) {
+    console.error('Selected text translation failed:', error);
+    createOverlayWindowFromCursor({
+      mode: 'error',
+      sourceLabel: 'Selected text',
+      translation: error.message,
+      autoCloseMs: 9000
+    });
+    sendToMain('translation-update', {
+      error: error.message,
+      mode: 'selected-text',
+      sourceLabel: 'Selected text'
+    });
+    return { success: false, error: error.message };
+  } finally {
+    selectedTextBusy = false;
+  }
+}
+
+async function readSelectedTextViaClipboard() {
+  const previousText = clipboard.readText();
+  const hadTextClipboard = clipboard.availableFormats().some((format) => format.includes('text'));
+
+  await sendCopyShortcut();
+  await delay(180);
+
+  const selectedText = clipboard.readText().trim();
+
+  if (hadTextClipboard) {
+    setTimeout(() => {
+      try {
+        clipboard.writeText(previousText);
+      } catch (error) {
+        console.log('Could not restore previous clipboard text:', error.message);
+      }
+    }, 250);
+  }
+
+  return selectedText;
+}
+
+async function sendCopyShortcut() {
+  if (process.platform === 'darwin') {
+    await execFileAsync('osascript', [
+      '-e',
+      'tell application "System Events" to keystroke "c" using command down'
+    ], { timeout: 1500 });
+    return;
+  }
+
+  if (process.platform === 'win32') {
+    await execFileAsync('powershell.exe', [
+      '-NoProfile',
+      '-STA',
+      '-Command',
+      'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("^c")'
+    ], { timeout: 1500 });
+    return;
+  }
+
+  await execFileAsync('xdotool', ['key', 'ctrl+c'], { timeout: 1500 });
+}
+
+function toggleLiveTranslation() {
+  if (appState.liveTranslationEnabled) {
+    stopLiveTranslation();
+    return { success: true, enabled: false };
+  }
+
+  startLiveTranslation();
+  return { success: true, enabled: true };
+}
+
+function startLiveTranslation() {
+  if (liveTranslationInterval) {
+    return;
+  }
+
+  appState.liveTranslationEnabled = true;
+  appState.liveStatus = 'Watching the visible screen';
+  liveLastSignature = '';
+  broadcastAppState();
+  runLiveTranslationCycle();
+  liveTranslationInterval = setInterval(runLiveTranslationCycle, 4500);
+}
+
+function stopLiveTranslation() {
+  if (liveTranslationInterval) {
+    clearInterval(liveTranslationInterval);
+    liveTranslationInterval = null;
+  }
+
+  appState.liveTranslationEnabled = false;
+  appState.liveStatus = 'Stopped';
+  liveTranslationBusy = false;
+  liveLastSignature = '';
+  broadcastAppState();
+}
+
+async function runLiveTranslationCycle() {
+  if (!appState.liveTranslationEnabled || liveTranslationBusy) {
+    return;
+  }
+
+  liveTranslationBusy = true;
+
+  try {
+    const cursorPoint = screen.getCursorScreenPoint();
+    const display = screen.getDisplayNearestPoint(cursorPoint);
+    const bounds = display.workArea;
+
+    appState.liveStatus = 'Capturing visible screen';
+    broadcastAppState();
+
+    const imageBuffer = await captureScreenBounds(bounds, { hideOverlay: true });
+
+    appState.liveStatus = 'Reading screen text';
+    broadcastAppState();
+
+    const extractedText = await extractTextFromImage(Buffer.from(imageBuffer));
+    const signature = createTextSignature(extractedText);
+
+    if (!extractedText || !containsJapanese(extractedText)) {
+      appState.liveStatus = 'No Japanese text visible';
+      broadcastAppState();
+      return;
+    }
+
+    if (signature === liveLastSignature) {
+      appState.liveStatus = 'Waiting for visible text to change';
+      broadcastAppState();
+      return;
+    }
+
+    liveLastSignature = signature;
+    appState.liveStatus = 'Translating visible screen';
+    broadcastAppState();
+
+    const overlayWidth = Math.min(460, Math.max(360, Math.floor(bounds.width * 0.34)));
+    await translateAndPublish(extractedText, {
+      mode: 'live-screen',
+      sourceLabel: 'Live screen',
+      showMain: false,
+      overlay: {
+        x: bounds.x + bounds.width - overlayWidth - 24,
+        y: bounds.y + 24,
+        width: overlayWidth,
+        height: 180
+      },
+      overlayOptions: {
+        placement: 'fixed',
+        persistent: true,
+        clickThrough: true
+      },
+      autoCloseMs: 0
+    });
+
+    appState.liveStatus = 'Live translation updated';
+    broadcastAppState();
+  } catch (error) {
+    console.error('Live screen translation failed:', error);
+    appState.liveStatus = error.message;
+    broadcastAppState();
+  } finally {
+    liveTranslationBusy = false;
+  }
+}
+
+function createTextSignature(text) {
+  return String(text || '')
+    .replace(/\s+/g, '')
+    .slice(0, 1200);
+}
+
+async function captureScreenBounds(bounds, options = {}) {
+  const targetDisplay = screen.getDisplayNearestPoint({
+    x: bounds.x + Math.max(1, bounds.width / 2),
+    y: bounds.y + Math.max(1, bounds.height / 2)
+  });
+
+  let overlayWasVisible = false;
+  if (options.hideOverlay && overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWasVisible = overlayWindow.isVisible();
+    overlayWindow.hide();
+    await delay(120);
+  }
+
+  try {
+    const thumbnailSize = {
+      width: Math.max(Math.round(targetDisplay.size.width * targetDisplay.scaleFactor), 1920),
+      height: Math.max(Math.round(targetDisplay.size.height * targetDisplay.scaleFactor), 1080)
+    };
+
+    const sources = await desktopCapturer.getSources({
+      types: ['screen'],
+      thumbnailSize
+    });
+
+    if (!sources.length) {
+      throw new Error('No screen sources available');
+    }
+
+    const source = findScreenSourceForDisplay(sources, targetDisplay);
+    const image = source.thumbnail;
+    const imageSize = image.getSize();
+    const displayBounds = targetDisplay.bounds;
+    const scaleX = imageSize.width / displayBounds.width;
+    const scaleY = imageSize.height / displayBounds.height;
+
+    const adjustedBounds = {
+      x: Math.round((bounds.x - displayBounds.x) * scaleX),
+      y: Math.round((bounds.y - displayBounds.y) * scaleY),
+      width: Math.round(bounds.width * scaleX),
+      height: Math.round(bounds.height * scaleY)
+    };
+
+    adjustedBounds.x = Math.max(0, Math.min(adjustedBounds.x, imageSize.width - 1));
+    adjustedBounds.y = Math.max(0, Math.min(adjustedBounds.y, imageSize.height - 1));
+    adjustedBounds.width = Math.max(1, Math.min(adjustedBounds.width, imageSize.width - adjustedBounds.x));
+    adjustedBounds.height = Math.max(1, Math.min(adjustedBounds.height, imageSize.height - adjustedBounds.y));
+
+    const img = nativeImage.createFromDataURL(image.toDataURL());
+    return img.crop(adjustedBounds).toPNG();
+  } finally {
+    if (overlayWasVisible && overlayWindow && !overlayWindow.isDestroyed()) {
+      overlayWindow.showInactive();
+    }
+  }
+}
+
+function findScreenSourceForDisplay(sources, display) {
+  return sources.find((source) => source.display_id === String(display.id)) || sources[0];
+}
+
+function clearOverlay() {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
+    overlayWindow.close();
+  }
+  currentOverlayData = null;
+}
+
+function createOverlayWindowFromCursor(payload) {
+  const cursor = screen.getCursorScreenPoint();
+  createOverlayWindow(
+    cursor.x + 16,
+    cursor.y + 16,
+    420,
+    120,
+    payload,
+    { placement: 'cursor', clickThrough: true }
+  );
 }
 
 // IPC Handlers
@@ -265,6 +700,49 @@ ipcMain.handle('translate', async (event, text, sourceLang = 'ja', targetLang = 
 
 ipcMain.handle('get-clipboard', async () => {
   return clipboard.readText();
+});
+
+ipcMain.handle('get-app-state', async () => ({
+  ...appState,
+  historyCount: translationHistory.length
+}));
+
+ipcMain.handle('get-history', async () => translationHistory);
+
+ipcMain.handle('translate-selection', async () => {
+  return await translateCurrentSelection();
+});
+
+ipcMain.handle('translate-clipboard-now', async () => {
+  try {
+    const text = clipboard.readText();
+    const result = await translateAndPublish(text, {
+      mode: 'clipboard-manual',
+      sourceLabel: 'Clipboard',
+      showMain: true
+    });
+    return { success: true, ...result };
+  } catch (error) {
+    sendToMain('translation-update', {
+      error: error.message,
+      mode: 'clipboard-manual',
+      sourceLabel: 'Clipboard'
+    });
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('toggle-live-translation', async () => {
+  return toggleLiveTranslation();
+});
+
+ipcMain.handle('toggle-clipboard-monitoring', async () => {
+  appState.clipboardMonitoring = !appState.clipboardMonitoring;
+  broadcastAppState();
+  return {
+    success: true,
+    enabled: appState.clipboardMonitoring
+  };
 });
 
 ipcMain.handle('resize-window', async (event, width, height) => {
@@ -350,48 +828,42 @@ function createSelectionWindow() {
 }
 
 // Create translation overlay window
-function createOverlayWindow(x, y, width, height, translation) {
-  // Close existing overlay
-  if (overlayWindow) {
+function createOverlayWindow(x, y, width, height, translationPayload, options = {}) {
+  if (overlayWindow && !overlayWindow.isDestroyed()) {
     overlayWindow.close();
   }
 
-  currentOverlayData = { x, y, width, height, translation };
+  const payload = normalizeOverlayPayload(translationPayload);
+  currentOverlayData = { x, y, width, height, translation: payload, options };
 
-  // Calculate overlay size based on translation length
-  // More accurate calculation for very large texts
-  const baseWidth = Math.max(width, 250);
-  const charCount = translation.length;
-  
-  // Estimate width: ~8-10 pixels per character, with min/max constraints
-  const charsPerLine = Math.floor(baseWidth / 9); // Approximate characters per line
+  const display = screen.getDisplayNearestPoint({ x, y });
+  const displayBounds = display.workArea || display.bounds;
+  const baseWidth = Math.max(width, options.minWidth || 280);
+  const combinedText = `${payload.sourceLabel || ''} ${payload.original || ''} ${payload.translation || ''}`;
+  const charCount = combinedText.length;
+  const charsPerLine = Math.max(24, Math.floor(baseWidth / 8.5));
   const estimatedLines = Math.ceil(charCount / charsPerLine);
-  const lineHeight = 30; // Height per line
-  const padding = 40; // Top and bottom padding
-  
-  // Calculate width: ensure it fits the text but has reasonable limits
-  const estimatedWidth = Math.min(Math.max(baseWidth, Math.min(charCount * 9, 800)), 1000);
-  
-  // Calculate height: allow for multiple lines, with maximum to prevent too large
-  const estimatedHeight = Math.min(Math.max(70, estimatedLines * lineHeight + padding), 600);
-  
-  const overlayWidth = estimatedWidth;
-  const overlayHeight = estimatedHeight;
+  const overlayWidth = Math.min(Math.max(baseWidth, 320), options.maxWidth || 720);
+  const overlayHeight = Math.min(
+    Math.max(height || 96, estimatedLines * 22 + 82),
+    options.maxHeight || 520
+  );
 
-  // Position overlay above the selected area, or below if not enough space
   let overlayX = x;
   let overlayY = y - overlayHeight - 10;
 
-  // If overlay would go off screen, position it below
-  const displays = screen.getAllDisplays();
-  const display = screen.getDisplayNearestPoint({ x, y });
-  if (overlayY < display.bounds.y) {
+  if (options.placement === 'fixed') {
+    overlayX = x;
+    overlayY = y;
+  } else if (options.placement === 'cursor') {
+    overlayX = x;
+    overlayY = y;
+  } else if (overlayY < displayBounds.y) {
     overlayY = y + height + 10;
   }
 
-  // Ensure overlay stays within screen bounds
-  overlayX = Math.max(display.bounds.x, Math.min(overlayX, display.bounds.x + display.bounds.width - overlayWidth));
-  overlayY = Math.max(display.bounds.y, Math.min(overlayY, display.bounds.y + display.bounds.height - overlayHeight));
+  overlayX = Math.max(displayBounds.x, Math.min(overlayX, displayBounds.x + displayBounds.width - overlayWidth));
+  overlayY = Math.max(displayBounds.y, Math.min(overlayY, displayBounds.y + displayBounds.height - overlayHeight));
 
   overlayWindow = new BrowserWindow({
     width: overlayWidth,
@@ -403,25 +875,52 @@ function createOverlayWindow(x, y, width, height, translation) {
     alwaysOnTop: true,
     skipTaskbar: true,
     resizable: false,
+    focusable: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js')
     }
   });
-  
-  // Store dimensions for dynamic resizing
-  overlayWindow.overlayDimensions = { width: overlayWidth, height: overlayHeight };
 
+  overlayWindow.overlayDimensions = { width: overlayWidth, height: overlayHeight };
   overlayWindow.loadFile('src/overlay/translation.html');
+
   overlayWindow.webContents.once('did-finish-load', () => {
-    console.log('Translation overlay window loaded, sending translation');
-    overlayWindow.webContents.send('set-translation', translation);
+    overlayWindow.webContents.send('set-translation', {
+      ...payload,
+      autoCloseMs: options.persistent ? 0 : payload.autoCloseMs
+    });
+
+    if (options.clickThrough !== false) {
+      overlayWindow.setIgnoreMouseEvents(true, { forward: true });
+    }
   });
 
   overlayWindow.on('closed', () => {
     overlayWindow = null;
   });
+}
+
+function normalizeOverlayPayload(payload) {
+  if (typeof payload === 'string') {
+    return {
+      mode: 'translation',
+      sourceLabel: 'Translation',
+      translation: payload,
+      autoCloseMs: 15000
+    };
+  }
+
+  return {
+    mode: payload?.mode || 'translation',
+    sourceLabel: payload?.sourceLabel || 'Translation',
+    original: payload?.original || '',
+    translation: payload?.translation || 'Translation not available',
+    sourceLang: payload?.sourceLang || appState.sourceLang,
+    targetLang: payload?.targetLang || appState.targetLang,
+    autoCloseMs: payload?.autoCloseMs ?? 15000
+  };
 }
 
 // IPC Handlers for OCR
@@ -440,29 +939,7 @@ ipcMain.handle('start-screen-selection', async () => {
 
 ipcMain.handle('capture-screen-region', async (event, bounds) => {
   try {
-    const sources = await desktopCapturer.getSources({
-      types: ['screen'],
-      thumbnailSize: { width: 1920, height: 1080 }
-    });
-
-    if (sources.length === 0) {
-      throw new Error('No screen sources available');
-    }
-
-    // Get the primary display
-    const primaryDisplay = screen.getPrimaryDisplay();
-    const { x, y, width, height } = bounds;
-
-    // Capture the selected region
-    const source = sources[0];
-    const image = source.thumbnail;
-    
-    // Crop the image to the selected region
-    const { nativeImage } = require('electron');
-    const img = nativeImage.createFromDataURL(image.toDataURL());
-    const cropped = img.crop({ x, y, width, height });
-
-    return cropped.toPNG();
+    return await captureScreenBounds(bounds, { hideOverlay: true });
   } catch (error) {
     console.error('Screen capture error:', error);
     throw error;
@@ -471,23 +948,27 @@ ipcMain.handle('capture-screen-region', async (event, bounds) => {
 
 ipcMain.handle('process-ocr', async (event, imageBuffer, bounds) => {
   try {
-    // Extract text using OCR
     const extractedText = await extractTextFromImage(Buffer.from(imageBuffer));
     
     if (!extractedText || extractedText.trim().length === 0) {
       throw new Error('No text found in the selected area');
     }
 
-    // Translate the text
-    const translation = await translateText(extractedText.trim(), 'ja', 'en');
-
-    // Show overlay with translation
-    createOverlayWindow(bounds.x, bounds.y, bounds.width, bounds.height, translation);
+    const result = await translateAndPublish(extractedText, {
+      mode: 'ocr-snip',
+      sourceLabel: 'OCR snip',
+      showMain: false,
+      overlay: bounds,
+      overlayOptions: {
+        placement: 'area',
+        clickThrough: true
+      }
+    });
 
     return {
       success: true,
-      original: extractedText.trim(),
-      translation: translation
+      original: result.original,
+      translation: result.translation
     };
   } catch (error) {
     console.error('OCR processing error:', error);
@@ -550,138 +1031,51 @@ ipcMain.handle('process-selected-region', async (event, bounds) => {
   console.log('Processing selected region:', bounds);
   
   try {
-    // Notify renderer: Capturing screen
     sendOCRStage('Capturing screen...');
-    console.log('Stage: Capturing screen...');
-    
-    // Capture the screen region with higher resolution
-    const imageBuffer = await new Promise(async (resolve, reject) => {
-      try {
-        // Get primary display size for better resolution
-        const primaryDisplay = screen.getPrimaryDisplay();
-        const { width: screenWidth, height: screenHeight } = primaryDisplay.size;
-        
-        // Use larger thumbnail size for better quality
-        const thumbnailSize = {
-          width: Math.max(screenWidth, 1920),
-          height: Math.max(screenHeight, 1080)
-        };
-        
-        const sources = await desktopCapturer.getSources({
-          types: ['screen'],
-          thumbnailSize: thumbnailSize
-        });
+    if (selectionWindow && !selectionWindow.isDestroyed()) {
+      selectionWindow.hide();
+      await delay(120);
+    }
 
-        if (sources.length === 0) {
-          reject(new Error('No screen sources available'));
-          return;
-        }
+    const imageBuffer = await captureScreenBounds(bounds, { hideOverlay: true });
 
-        // Use the source that matches the bounds location
-        let source = sources[0];
-        if (sources.length > 1) {
-          // Try to find the correct display
-          const displays = screen.getAllDisplays();
-          const targetDisplay = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y });
-          
-          // Find source that matches the display
-          for (const s of sources) {
-            if (s.display_id && s.display_id === targetDisplay.id.toString()) {
-              source = s;
-              break;
-            }
-          }
-        }
-        
-        const image = source.thumbnail;
-        const { nativeImage } = require('electron');
-        const img = nativeImage.createFromDataURL(image.toDataURL());
-        
-        // Get actual image size
-        const actualSize = image.getSize();
-        
-        // Calculate scale factor based on actual thumbnail size vs screen size
-        // The thumbnail might be scaled down, so we need to adjust coordinates
-        const displays = screen.getAllDisplays();
-        const targetDisplay = screen.getDisplayNearestPoint({ x: bounds.x, y: bounds.y });
-        const displayBounds = targetDisplay.bounds;
-        
-        // Calculate scale: thumbnail width / display width
-        const scaleX = actualSize.width / displayBounds.width;
-        const scaleY = actualSize.height / displayBounds.height;
-        
-        // Adjust bounds relative to display position and scale
-        const adjustedBounds = {
-          x: Math.round((bounds.x - displayBounds.x) * scaleX),
-          y: Math.round((bounds.y - displayBounds.y) * scaleY),
-          width: Math.round(bounds.width * scaleX),
-          height: Math.round(bounds.height * scaleY)
-        };
-        
-        // Ensure bounds are within image
-        adjustedBounds.x = Math.max(0, Math.min(adjustedBounds.x, actualSize.width - 1));
-        adjustedBounds.y = Math.max(0, Math.min(adjustedBounds.y, actualSize.height - 1));
-        adjustedBounds.width = Math.min(adjustedBounds.width, actualSize.width - adjustedBounds.x);
-        adjustedBounds.height = Math.min(adjustedBounds.height, actualSize.height - adjustedBounds.y);
-        
-        const cropped = img.crop(adjustedBounds);
-        
-        resolve(cropped.toPNG());
-      } catch (error) {
-        console.error('Screen capture error:', error);
-        reject(error);
-      }
-    });
-
-    // Notify renderer: Extracting text
     sendOCRStage('Extracting text with OCR...');
-    console.log('Stage: Extracting text with OCR...');
-    
-    // Process OCR
     const extractedText = await extractTextFromImage(Buffer.from(imageBuffer));
-    console.log('OCR extracted text:', extractedText);
     
     if (!extractedText || extractedText.trim().length === 0) {
       throw new Error('No text found in the selected area. Please try selecting a different area.');
     }
 
-    // Notify renderer: Translating
     sendOCRStage('Translating text...');
-    console.log('Stage: Translating text...');
-    
-    // Translate the text
-    const translation = await translateText(extractedText.trim(), 'ja', 'en');
-    console.log('Translation complete:', translation);
+    const result = await translateAndPublish(extractedText, {
+      mode: 'ocr-snip',
+      sourceLabel: 'OCR snip',
+      showMain: false,
+      overlay: bounds,
+      overlayOptions: {
+        placement: 'area',
+        clickThrough: true
+      }
+    });
 
-    // Show overlay with translation
-    console.log('Creating overlay window at:', { x: bounds.x, y: bounds.y });
-    createOverlayWindow(bounds.x, bounds.y, bounds.width, bounds.height, translation);
-
-    // Send result to renderer
-    console.log('Sending OCR result to main window');
-    if (mainWindow && mainWindow.webContents) {
-      mainWindow.webContents.send('ocr-result', {
-        success: true,
-        original: extractedText.trim(),
-        translation: translation
-      });
-    }
+    sendToMain('ocr-result', {
+      success: true,
+      original: result.original,
+      translation: result.translation
+    });
 
     return {
       success: true,
-      original: extractedText.trim(),
-      translation: translation
+      original: result.original,
+      translation: result.translation
     };
   } catch (error) {
     console.error('OCR processing error:', error);
     
-    // Send error to renderer
-    if (mainWindow && mainWindow.webContents) {
-      mainWindow.webContents.send('ocr-result', {
-        success: false,
-        error: error.message || 'Unknown error occurred'
-      });
-    }
+    sendToMain('ocr-result', {
+      success: false,
+      error: error.message || 'Unknown error occurred'
+    });
     
     return {
       success: false,
@@ -692,21 +1086,21 @@ ipcMain.handle('process-selected-region', async (event, bounds) => {
 
 ipcMain.handle('show-overlay', async (event, bounds, translation) => {
   if (bounds && translation) {
-    createOverlayWindow(bounds.x, bounds.y, bounds.width, bounds.height, translation);
+    createOverlayWindow(bounds.x, bounds.y, bounds.width, bounds.height, translation, {
+      clickThrough: true
+    });
   } else if (currentOverlayData) {
     createOverlayWindow(
       currentOverlayData.x,
       currentOverlayData.y,
       currentOverlayData.width,
       currentOverlayData.height,
-      currentOverlayData.translation
+      currentOverlayData.translation,
+      currentOverlayData.options || {}
     );
   }
 });
 
 ipcMain.handle('clear-overlay', async () => {
-  if (overlayWindow) {
-    overlayWindow.close();
-  }
-  currentOverlayData = null;
+  clearOverlay();
 });
