@@ -1,6 +1,6 @@
 const axios = require('axios');
 
-const DEFAULT_SOURCE_LANGUAGE = 'ja';
+const DEFAULT_SOURCE_LANGUAGE = 'auto';
 const DEFAULT_TARGET_LANGUAGE = 'en';
 const MAX_CACHE_ENTRIES = 200;
 const MAX_CHUNK_LENGTH = 480;
@@ -49,7 +49,8 @@ async function translateText(text, options = {}) {
     throw new Error('No text was provided for translation.');
   }
 
-  const sourceLang = normalizeLanguage(options.sourceLang || detectLanguage(original), DEFAULT_SOURCE_LANGUAGE);
+  const requestedSourceLang = normalizeLanguage(options.sourceLang, DEFAULT_SOURCE_LANGUAGE);
+  const sourceLang = requestedSourceLang === 'auto' ? detectLanguage(original) : requestedSourceLang;
   const targetLang = normalizeLanguage(options.targetLang, DEFAULT_TARGET_LANGUAGE);
 
   if (sourceLang === targetLang) {

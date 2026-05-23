@@ -6,7 +6,7 @@ const path = require('path');
 const { translateText, containsJapanese } = require('./src/services/translationService');
 
 const execFileAsync = promisify(execFile);
-const SHORTCUT_TRANSLATE_SELECTION = 'CommandOrControl+Shift+T';
+const DEFAULT_SHORTCUT_TRANSLATE_SELECTION = 'CommandOrControl+Shift+T';
 const CLIPBOARD_POLL_MS = 900;
 const MAX_HISTORY_ITEMS = 40;
 
@@ -21,11 +21,10 @@ let isTranslatingSelection = false;
 const state = {
   clipboardMonitoring: true,
   busy: false,
-  status: 'Ready',
-  sourceLang: 'ja',
+  sourceLang: 'auto',
   targetLang: 'en',
   provider: 'Free APIs',
-  shortcut: SHORTCUT_TRANSLATE_SELECTION
+  shortcut: DEFAULT_SHORTCUT_TRANSLATE_SELECTION
 };
 
 const history = [];
@@ -131,7 +130,7 @@ function refreshTrayMenu() {
 
   tray.setContextMenu(Menu.buildFromTemplate([
     { label: 'Show Polaris', click: showMainWindow },
-    { label: 'Translate Selected Text', accelerator: SHORTCUT_TRANSLATE_SELECTION, click: translateSelection },
+    { label: 'Translate Selected Text', accelerator: state.shortcut, click: translateSelection },
     { label: 'Translate Clipboard', click: translateClipboard },
     { type: 'separator' },
     {
@@ -151,10 +150,15 @@ function refreshTrayMenu() {
 }
 
 function registerShortcuts() {
-  const registered = globalShortcut.register(SHORTCUT_TRANSLATE_SELECTION, translateSelection);
+  const registered = globalShortcut.register(state.shortcut, translateSelection);
   if (!registered) {
-    updateState({ status: `Could not register ${SHORTCUT_TRANSLATE_SELECTION}` });
+    emitTranslation({
+      ok: false,
+      error: `Could not register shortcut ${formatShortcutLabel(state.shortcut)}.`,
+      sourceLabel: 'Settings'
+    });
   }
+  refreshTrayMenu();
 }
 
 function startClipboardMonitoring() {
@@ -191,7 +195,7 @@ async function translateSelection() {
   isTranslatingSelection = true;
 
   try {
-    updateState({ busy: true, status: 'Reading selected text...' });
+    updateState({ busy: true });
     const text = await readSelectedText();
 
     if (!text) {
@@ -236,13 +240,30 @@ async function translateClipboard() {
   });
 }
 
+async function translateManual(_event, payload = {}) {
+  if (state.busy) {
+    return { ok: false, error: 'Polaris is already translating.' };
+  }
+
+  if (payload.sourceLang || payload.targetLang) {
+    updateLanguages(payload.sourceLang, payload.targetLang);
+  }
+
+  return await translateFromText(payload.text || '', {
+    mode: 'manual',
+    sourceLabel: 'Manual input',
+    showBubble: false,
+    revealMain: false
+  });
+}
+
 async function translateFromText(text, options) {
   try {
-    updateState({ busy: true, status: `Translating ${options.sourceLabel.toLowerCase()}...` });
+    updateState({ busy: true });
 
     const result = await translateText(text, {
-      sourceLang: state.sourceLang,
-      targetLang: state.targetLang
+      sourceLang: options.sourceLang || state.sourceLang,
+      targetLang: options.targetLang || state.targetLang
     });
 
     const item = {
@@ -259,7 +280,7 @@ async function translateFromText(text, options) {
 
     addHistoryItem(item);
     emitTranslation({ ok: true, item });
-    updateState({ busy: false, status: 'Translation complete' });
+    updateState({ busy: false });
 
     if (options.showBubble) {
       showBubble(item);
@@ -379,18 +400,59 @@ function addHistoryItem(item) {
 function clearHistory() {
   history.splice(0, history.length);
   emitHistory();
-  updateState({ status: 'Ready' });
   return { ok: true };
+}
+
+function updateLanguages(sourceLang, targetLang) {
+  if (sourceLang) {
+    state.sourceLang = sourceLang;
+  }
+
+  if (targetLang) {
+    state.targetLang = targetLang;
+  }
+
+  emitState();
+  return {
+    ok: true,
+    sourceLang: state.sourceLang,
+    targetLang: state.targetLang
+  };
 }
 
 function toggleClipboardMonitoring() {
   state.clipboardMonitoring = !state.clipboardMonitoring;
   lastClipboardText = clipboard.readText();
-  updateState({
-    status: state.clipboardMonitoring ? 'Clipboard monitoring resumed' : 'Clipboard monitoring paused'
-  });
+  emitState();
   refreshTrayMenu();
   return { ok: true, clipboardMonitoring: state.clipboardMonitoring };
+}
+
+function updateShortcut(accelerator) {
+  if (!accelerator || accelerator === state.shortcut) {
+    return { ok: true, shortcut: state.shortcut };
+  }
+
+  globalShortcut.unregister(state.shortcut);
+  const previousShortcut = state.shortcut;
+  state.shortcut = accelerator;
+  const registered = globalShortcut.register(state.shortcut, translateSelection);
+
+  if (!registered) {
+    state.shortcut = previousShortcut;
+    globalShortcut.register(state.shortcut, translateSelection);
+    emitState();
+    refreshTrayMenu();
+    return {
+      ok: false,
+      error: `Could not register shortcut ${formatShortcutLabel(accelerator)}.`,
+      shortcut: state.shortcut
+    };
+  }
+
+  emitState();
+  refreshTrayMenu();
+  return { ok: true, shortcut: state.shortcut };
 }
 
 function handleTranslationError(error, sourceLabel) {
@@ -402,7 +464,7 @@ function handleTranslationError(error, sourceLabel) {
   };
 
   emitTranslation(payload);
-  updateState({ busy: false, status: message });
+  updateState({ busy: false });
   return payload;
 }
 
@@ -437,8 +499,21 @@ ipcMain.handle('state:get', () => ({ ...state, historyCount: history.length }));
 ipcMain.handle('history:get', () => [...history]);
 ipcMain.handle('translate:selection', translateSelection);
 ipcMain.handle('translate:clipboard', translateClipboard);
+ipcMain.handle('translate:manual', translateManual);
 ipcMain.handle('history:clear', clearHistory);
 ipcMain.handle('monitoring:toggle', toggleClipboardMonitoring);
+ipcMain.handle('languages:update', (_event, payload = {}) => updateLanguages(payload.sourceLang, payload.targetLang));
+ipcMain.handle('shortcut:update', (_event, accelerator) => updateShortcut(accelerator));
+ipcMain.handle('clipboard:write', (_event, text) => {
+  clipboard.writeText(String(text || ''));
+  return { ok: true };
+});
+
+function formatShortcutLabel(accelerator) {
+  return String(accelerator || '')
+    .replace('CommandOrControl', 'Ctrl/Cmd')
+    .replaceAll('+', ' + ');
+}
 ipcMain.handle('window:show-main', () => {
   showMainWindow();
   return { ok: true };

@@ -13,72 +13,143 @@
                 <div class="brand-mark" aria-hidden="true">P</div>
                 <div>
                     <h1>Polaris</h1>
-                    <p>Translate selected or copied Japanese text.</p>
+                    <p>Fast translation for selected, copied, and typed text.</p>
                 </div>
-            </div>
-            <div class="top-actions">
-                <div class="state-pill" id="statePill">Ready</div>
-                <button class="utility-button" id="monitoringButton" type="button">Monitoring on</button>
             </div>
         </header>
 
-        <section class="method-list" aria-label="Translation methods">
-            <article class="method-card">
-                <div class="method-number">1</div>
-                <div class="method-copy">
-                    <h2>Selectable text</h2>
-                    <p>Highlight text in any app, then press <strong>Ctrl/Cmd+Shift+T</strong>.</p>
-                </div>
-                <button class="method-action" id="selectionButton" type="button">Translate selected</button>
-            </article>
+        <nav class="tabbar" aria-label="Polaris sections">
+            <button class="tab-button active" type="button" data-tab="translate">Translate</button>
+            <button class="tab-button" type="button" data-tab="history">History</button>
+            <button class="tab-button" type="button" data-tab="settings">Settings</button>
+        </nav>
 
-            <article class="method-card">
-                <div class="method-number">2</div>
-                <div class="method-copy">
-                    <h2>Clipboard text</h2>
-                    <p>Copy Japanese text. Polaris translates it automatically while monitoring is on.</p>
+        <section class="tab-panel active" id="translate-tab">
+            <section class="method-strip" aria-label="Translation methods">
+                <div class="method-note">
+                    <strong>Selected text</strong>
+                    <span>Highlight text anywhere, then press <b id="shortcutInline">Ctrl/Cmd + Shift + T</b>.</span>
                 </div>
-                <button class="method-action subtle" id="clipboardButton" type="button">Translate clipboard now</button>
-            </article>
+                <div class="method-note">
+                    <strong>Copied text</strong>
+                    <span id="monitoringInline">Copy Japanese text and it translates automatically.</span>
+                </div>
+                <div class="method-note">
+                    <strong>Translation method</strong>
+                    <span>MyMemory first, LibreTranslate fallback. Source can auto-detect.</span>
+                </div>
+            </section>
+
+            <section class="translator">
+                <div class="language-bar">
+                    <label>
+                        <span>Source</span>
+                        <select id="sourceLanguage">
+                            <option value="auto">Auto detect</option>
+                            <option value="ja">Japanese</option>
+                            <option value="en">English</option>
+                            <option value="ko">Korean</option>
+                            <option value="zh-cn">Chinese</option>
+                            <option value="fr">French</option>
+                            <option value="de">German</option>
+                            <option value="es">Spanish</option>
+                        </select>
+                    </label>
+                    <button class="icon-button" id="swapButton" type="button" title="Swap languages">⇄</button>
+                    <label>
+                        <span>Target</span>
+                        <select id="targetLanguage">
+                            <option value="en">English</option>
+                            <option value="ja">Japanese</option>
+                            <option value="ko">Korean</option>
+                            <option value="zh-cn">Chinese</option>
+                            <option value="fr">French</option>
+                            <option value="de">German</option>
+                            <option value="es">Spanish</option>
+                        </select>
+                    </label>
+                    <button class="translate-button" id="translateButton" type="button">Translate</button>
+                </div>
+
+                <div class="translator-grid">
+                    <article class="text-panel">
+                        <div class="panel-heading">
+                            <div>
+                                <h2>Source</h2>
+                                <p id="sourceLabel">Type, paste, copy, or use the selected-text shortcut.</p>
+                            </div>
+                            <button class="ghost-button" id="clearTextButton" type="button">Clear</button>
+                        </div>
+                        <textarea id="sourceInput" class="source-input" spellcheck="false" placeholder="Type or paste text here, then press Ctrl+Enter."></textarea>
+                    </article>
+
+                    <article class="text-panel result-panel">
+                        <div class="panel-heading">
+                            <div>
+                                <h2>Translation</h2>
+                                <p id="providerLabel">Free APIs</p>
+                            </div>
+                            <div class="panel-actions">
+                                <button class="ghost-button" id="speakSourceButton" type="button">Speak source</button>
+                                <button class="ghost-button" id="speakTranslationButton" type="button">Speak translation</button>
+                                <button class="ghost-button" id="copyTranslationButton" type="button">Copy</button>
+                            </div>
+                        </div>
+                        <div class="translation-output" id="translationText">No translation yet.</div>
+                    </article>
+                </div>
+            </section>
         </section>
 
-        <section class="translation-panel">
-            <div class="translation-heading">
-                <div>
-                    <h2>Translation</h2>
-                    <p id="sourceLabel">Waiting for selected or copied text</p>
+        <section class="tab-panel" id="history-tab">
+            <section class="history-section">
+                <div class="section-heading">
+                    <div>
+                        <h2>History</h2>
+                        <p id="historyMeta">No history yet</p>
+                    </div>
+                    <button class="text-button" id="clearHistoryButton" type="button">Clear history</button>
                 </div>
-                <span id="providerLabel">Free APIs</span>
-            </div>
+                <div class="history-list" id="historyList">
+                    <div class="empty-state">Recent translations will appear here.</div>
+                </div>
+            </section>
+        </section>
 
-            <div class="translation-body">
-                <div class="translation-block">
-                    <label for="originalText">Original</label>
-                    <div class="text-box original" id="originalText">
-                        Use one of the two methods above. The original text and translation will stay together here.
+        <section class="tab-panel" id="settings-tab">
+            <section class="settings-section">
+                <div class="section-heading">
+                    <div>
+                        <h2>Settings</h2>
+                        <p>Keep the main translator clean. Utility controls live here.</p>
                     </div>
                 </div>
 
-                <div class="translation-block result">
-                    <label for="translationText">English</label>
-                    <div class="text-box translation" id="translationText">
-                        No translation yet.
+                <div class="setting-row">
+                    <div>
+                        <h3>Selected-text shortcut</h3>
+                        <p>Used when text is highlighted in another app.</p>
                     </div>
+                    <select id="shortcutSelect">
+                        <option value="CommandOrControl+Shift+T">Ctrl/Cmd + Shift + T</option>
+                        <option value="CommandOrControl+Alt+T">Ctrl/Cmd + Alt + T</option>
+                        <option value="CommandOrControl+Shift+E">Ctrl/Cmd + Shift + E</option>
+                        <option value="CommandOrControl+Alt+E">Ctrl/Cmd + Alt + E</option>
+                    </select>
                 </div>
-            </div>
-        </section>
 
-        <section class="history-section">
-            <div class="history-heading">
-                <div>
-                    <h2>History</h2>
-                    <p id="historyMeta">No history yet</p>
+                <div class="setting-row">
+                    <div>
+                        <h3>Clipboard auto-translate</h3>
+                        <p>When enabled, copying Japanese text immediately sends it to the translation panel.</p>
+                    </div>
+                    <button class="text-button" id="monitoringButton" type="button">Monitoring on</button>
                 </div>
-                <button class="text-button" id="clearHistoryButton" type="button">Clear</button>
-            </div>
-            <div class="history-list" id="historyList">
-                <div class="empty-state">Recent translations will appear here.</div>
-            </div>
+
+                <div class="settings-note" id="shortcutStatus">
+                    Selected-text translation uses a temporary copy action. On macOS, grant Accessibility permission if the shortcut cannot read selected text.
+                </div>
+            </section>
         </section>
     </main>
 
