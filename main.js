@@ -1,12 +1,25 @@
-const { app, BrowserWindow, Tray, Menu, clipboard, globalShortcut, ipcMain, screen, nativeImage } = require('electron');
-const { execFile } = require('child_process');
-const { promisify } = require('util');
-const fs = require('fs');
-const path = require('path');
-const { translateText, containsJapanese } = require('./src/services/translationService');
+const {
+  app,
+  BrowserWindow,
+  Tray,
+  Menu,
+  clipboard,
+  globalShortcut,
+  ipcMain,
+  screen,
+  nativeImage,
+} = require("electron");
+const { execFile } = require("child_process");
+const { promisify } = require("util");
+const fs = require("fs");
+const path = require("path");
+const {
+  translateText,
+  containsJapanese,
+} = require("./src/services/translationService");
 
 const execFileAsync = promisify(execFile);
-const DEFAULT_SHORTCUT_TRANSLATE_SELECTION = 'CommandOrControl+Shift+T';
+const DEFAULT_SHORTCUT_TRANSLATE_SELECTION = "CommandOrControl+Shift+T";
 const CLIPBOARD_POLL_MS = 900;
 const MAX_HISTORY_ITEMS = 40;
 
@@ -14,17 +27,17 @@ let mainWindow = null;
 let bubbleWindow = null;
 let tray = null;
 let clipboardTimer = null;
-let lastClipboardText = '';
+let lastClipboardText = "";
 let isQuitting = false;
 let isTranslatingSelection = false;
 
 const state = {
   clipboardMonitoring: true,
   busy: false,
-  sourceLang: 'auto',
-  targetLang: 'en',
-  provider: 'Free APIs',
-  shortcut: DEFAULT_SHORTCUT_TRANSLATE_SELECTION
+  sourceLang: "auto",
+  targetLang: "en",
+  provider: "Free APIs",
+  shortcut: DEFAULT_SHORTCUT_TRANSLATE_SELECTION,
 };
 
 const history = [];
@@ -36,7 +49,7 @@ app.whenReady().then(() => {
   startClipboardMonitoring();
 });
 
-app.on('activate', () => {
+app.on("activate", () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createMainWindow();
   } else {
@@ -44,18 +57,18 @@ app.on('activate', () => {
   }
 });
 
-app.on('before-quit', () => {
+app.on("before-quit", () => {
   isQuitting = true;
 });
 
-app.on('will-quit', () => {
+app.on("will-quit", () => {
   globalShortcut.unregisterAll();
   if (clipboardTimer) {
     clearInterval(clipboardTimer);
   }
 });
 
-app.on('window-all-closed', () => {
+app.on("window-all-closed", () => {
   // Keep the tray app alive until the user explicitly quits.
 });
 
@@ -64,7 +77,7 @@ function createMainWindow() {
     return mainWindow;
   }
 
-  const iconPath = path.join(__dirname, 'assets', 'icon.png');
+  const iconPath = path.join(__dirname, "assets", "icon.png");
 
   mainWindow = new BrowserWindow({
     width: 780,
@@ -72,31 +85,31 @@ function createMainWindow() {
     minWidth: 620,
     minHeight: 520,
     show: false,
-    title: 'Polaris',
-    backgroundColor: '#f6f7fb',
+    title: "Polaris",
+    backgroundColor: "#f6f7fb",
     icon: fs.existsSync(iconPath) ? iconPath : undefined,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
-      contextIsolation: true
-    }
+      contextIsolation: true,
+    },
   });
 
-  mainWindow.loadFile('index.html');
-  mainWindow.once('ready-to-show', () => {
+  mainWindow.loadFile("index.html");
+  mainWindow.once("ready-to-show", () => {
     showMainWindow();
     emitState();
     emitHistory();
   });
 
-  mainWindow.on('close', (event) => {
+  mainWindow.on("close", (event) => {
     if (!isQuitting) {
       event.preventDefault();
       mainWindow.hide();
     }
   });
 
-  mainWindow.on('closed', () => {
+  mainWindow.on("closed", () => {
     mainWindow = null;
   });
 
@@ -113,13 +126,25 @@ function showMainWindow() {
 }
 
 function createTray() {
-  const iconPath = path.join(__dirname, 'assets', 'icon.png');
-  const icon = fs.existsSync(iconPath)
+  const iconPath = path.join(__dirname, "assets", "icon.png");
+  let icon = fs.existsSync(iconPath)
     ? nativeImage.createFromPath(iconPath)
     : nativeImage.createEmpty();
 
+  if (!icon.isEmpty()) {
+    if (process.platform === "darwin") {
+      // macOS status bar icons should be small and template-ready.
+      icon = icon.resize({ width: 18, height: 18 });
+      icon.setTemplateImage(true);
+    } else if (process.platform === "win32") {
+      icon = icon.resize({ width: 16, height: 16 });
+    } else {
+      icon = icon.resize({ width: 22, height: 22 });
+    }
+  }
+
   tray = new Tray(icon);
-  tray.setToolTip('Polaris');
+  tray.setToolTip("Polaris");
   refreshTrayMenu();
 }
 
@@ -128,34 +153,45 @@ function refreshTrayMenu() {
     return;
   }
 
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Show Polaris', click: showMainWindow },
-    { label: 'Translate Selected Text', accelerator: state.shortcut, click: translateSelection },
-    { label: 'Translate Clipboard', click: translateClipboard },
-    { type: 'separator' },
-    {
-      label: state.clipboardMonitoring ? 'Pause Clipboard Monitoring' : 'Resume Clipboard Monitoring',
-      click: toggleClipboardMonitoring
-    },
-    { label: 'Clear History', click: clearHistory },
-    { type: 'separator' },
-    {
-      label: 'Quit',
-      click: () => {
-        isQuitting = true;
-        app.quit();
-      }
-    }
-  ]));
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "Show Polaris", click: showMainWindow },
+      {
+        label: "Translate Selected Text",
+        accelerator: state.shortcut,
+        click: translateSelection,
+      },
+      { label: "Translate Clipboard", click: translateClipboard },
+      { type: "separator" },
+      {
+        label: state.clipboardMonitoring
+          ? "Pause Clipboard Monitoring"
+          : "Resume Clipboard Monitoring",
+        click: toggleClipboardMonitoring,
+      },
+      { label: "Clear History", click: clearHistory },
+      { type: "separator" },
+      {
+        label: "Quit",
+        click: () => {
+          isQuitting = true;
+          app.quit();
+        },
+      },
+    ]),
+  );
 }
 
 function registerShortcuts() {
-  const registered = globalShortcut.register(state.shortcut, translateSelection);
+  const registered = globalShortcut.register(
+    state.shortcut,
+    translateSelection,
+  );
   if (!registered) {
     emitTranslation({
       ok: false,
       error: `Could not register shortcut ${formatShortcutLabel(state.shortcut)}.`,
-      sourceLabel: 'Settings'
+      sourceLabel: "Settings",
     });
   }
   refreshTrayMenu();
@@ -175,21 +211,21 @@ function startClipboardMonitoring() {
 
     lastClipboardText = text;
     await translateFromText(text, {
-      mode: 'clipboard',
-      sourceLabel: 'Clipboard',
+      mode: "clipboard",
+      sourceLabel: "Clipboard",
       showBubble: false,
-      revealMain: true
+      revealMain: true,
     });
   }, CLIPBOARD_POLL_MS);
 }
 
 async function translateSelection() {
   if (isTranslatingSelection) {
-    return { ok: false, error: 'Selection translation is already running.' };
+    return { ok: false, error: "Selection translation is already running." };
   }
 
   if (state.busy) {
-    return { ok: false, error: 'Polaris is already translating.' };
+    return { ok: false, error: "Polaris is already translating." };
   }
 
   isTranslatingSelection = true;
@@ -199,21 +235,23 @@ async function translateSelection() {
     const text = await readSelectedText();
 
     if (!text) {
-      throw new Error('Select text in another app, then press Ctrl/Cmd+Shift+T again.');
+      throw new Error(
+        "Select text in another app, then press Ctrl/Cmd+Shift+T again.",
+      );
     }
 
     return await translateFromText(text, {
-      mode: 'selection',
-      sourceLabel: 'Selected text',
+      mode: "selection",
+      sourceLabel: "Selected text",
       showBubble: true,
-      revealMain: false
+      revealMain: false,
     });
   } catch (error) {
-    const result = handleTranslationError(error, 'Selected text');
+    const result = handleTranslationError(error, "Selected text");
     showBubble({
-      sourceLabel: 'Selected text',
+      sourceLabel: "Selected text",
       translation: result.error,
-      isError: true
+      isError: true,
     });
     return result;
   } finally {
@@ -224,36 +262,39 @@ async function translateSelection() {
 
 async function translateClipboard() {
   if (state.busy) {
-    return { ok: false, error: 'Polaris is already translating.' };
+    return { ok: false, error: "Polaris is already translating." };
   }
 
   const text = clipboard.readText();
   if (!text.trim()) {
-    return handleTranslationError(new Error('Clipboard does not contain text.'), 'Clipboard');
+    return handleTranslationError(
+      new Error("Clipboard does not contain text."),
+      "Clipboard",
+    );
   }
 
   return await translateFromText(text, {
-    mode: 'clipboard-manual',
-    sourceLabel: 'Clipboard',
+    mode: "clipboard-manual",
+    sourceLabel: "Clipboard",
     showBubble: false,
-    revealMain: true
+    revealMain: true,
   });
 }
 
 async function translateManual(_event, payload = {}) {
   if (state.busy) {
-    return { ok: false, error: 'Polaris is already translating.' };
+    return { ok: false, error: "Polaris is already translating." };
   }
 
   if (payload.sourceLang || payload.targetLang) {
     updateLanguages(payload.sourceLang, payload.targetLang);
   }
 
-  return await translateFromText(payload.text || '', {
-    mode: 'manual',
-    sourceLabel: 'Manual input',
+  return await translateFromText(payload.text || "", {
+    mode: "manual",
+    sourceLabel: "Manual input",
     showBubble: false,
-    revealMain: false
+    revealMain: false,
   });
 }
 
@@ -263,7 +304,7 @@ async function translateFromText(text, options) {
 
     const result = await translateText(text, {
       sourceLang: options.sourceLang || state.sourceLang,
-      targetLang: options.targetLang || state.targetLang
+      targetLang: options.targetLang || state.targetLang,
     });
 
     const item = {
@@ -275,7 +316,7 @@ async function translateFromText(text, options) {
       translation: result.translation,
       sourceLang: result.sourceLang,
       targetLang: result.targetLang,
-      provider: result.provider
+      provider: result.provider,
     };
 
     addHistoryItem(item);
@@ -309,8 +350,10 @@ async function readSelectedText() {
       clipboard.writeText(previousText);
     }
 
-    if (process.platform === 'darwin') {
-      throw new Error('Accessibility permission needed for selected-text hotkey. You can still copy text and use clipboard mode.');
+    if (process.platform === "darwin") {
+      throw new Error(
+        "Accessibility permission needed for selected-text hotkey. You can still copy text and use clipboard mode.",
+      );
     }
 
     throw new Error(`Could not read selected text: ${error.message}`);
@@ -330,25 +373,33 @@ async function readSelectedText() {
 }
 
 async function sendCopyShortcut() {
-  if (process.platform === 'darwin') {
-    await execFileAsync('osascript', [
-      '-e',
-      'tell application "System Events" to keystroke "c" using command down'
-    ], { timeout: 2000 });
+  if (process.platform === "darwin") {
+    await execFileAsync(
+      "osascript",
+      [
+        "-e",
+        'tell application "System Events" to keystroke "c" using command down',
+      ],
+      { timeout: 2000 },
+    );
     return;
   }
 
-  if (process.platform === 'win32') {
-    await execFileAsync('powershell.exe', [
-      '-NoProfile',
-      '-STA',
-      '-Command',
-      'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("^c")'
-    ], { timeout: 2000 });
+  if (process.platform === "win32") {
+    await execFileAsync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-STA",
+        "-Command",
+        'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.SendKeys]::SendWait("^c")',
+      ],
+      { timeout: 2000 },
+    );
     return;
   }
 
-  await execFileAsync('xdotool', ['key', 'ctrl+c'], { timeout: 2000 });
+  await execFileAsync("xdotool", ["key", "ctrl+c"], { timeout: 2000 });
 }
 
 function showBubble(payload) {
@@ -361,8 +412,14 @@ function showBubble(payload) {
   const width = 390;
   const height = 188;
   const margin = 18;
-  const x = Math.min(cursor.x + 18, display.workArea.x + display.workArea.width - width - margin);
-  const y = Math.min(cursor.y + 18, display.workArea.y + display.workArea.height - height - margin);
+  const x = Math.min(
+    cursor.x + 18,
+    display.workArea.x + display.workArea.width - width - margin,
+  );
+  const y = Math.min(
+    cursor.y + 18,
+    display.workArea.y + display.workArea.height - height - margin,
+  );
 
   bubbleWindow = new BrowserWindow({
     width,
@@ -376,17 +433,17 @@ function showBubble(payload) {
     skipTaskbar: true,
     alwaysOnTop: true,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
-      contextIsolation: true
-    }
+      contextIsolation: true,
+    },
   });
 
-  bubbleWindow.loadFile(path.join(__dirname, 'src', 'bubble', 'bubble.html'));
-  bubbleWindow.webContents.once('did-finish-load', () => {
-    bubbleWindow.webContents.send('bubble:payload', payload);
+  bubbleWindow.loadFile(path.join(__dirname, "src", "bubble", "bubble.html"));
+  bubbleWindow.webContents.once("did-finish-load", () => {
+    bubbleWindow.webContents.send("bubble:payload", payload);
   });
-  bubbleWindow.on('closed', () => {
+  bubbleWindow.on("closed", () => {
     bubbleWindow = null;
   });
 }
@@ -416,7 +473,7 @@ function updateLanguages(sourceLang, targetLang) {
   return {
     ok: true,
     sourceLang: state.sourceLang,
-    targetLang: state.targetLang
+    targetLang: state.targetLang,
   };
 }
 
@@ -436,7 +493,10 @@ function updateShortcut(accelerator) {
   globalShortcut.unregister(state.shortcut);
   const previousShortcut = state.shortcut;
   state.shortcut = accelerator;
-  const registered = globalShortcut.register(state.shortcut, translateSelection);
+  const registered = globalShortcut.register(
+    state.shortcut,
+    translateSelection,
+  );
 
   if (!registered) {
     state.shortcut = previousShortcut;
@@ -446,7 +506,7 @@ function updateShortcut(accelerator) {
     return {
       ok: false,
       error: `Could not register shortcut ${formatShortcutLabel(accelerator)}.`,
-      shortcut: state.shortcut
+      shortcut: state.shortcut,
     };
   }
 
@@ -456,11 +516,11 @@ function updateShortcut(accelerator) {
 }
 
 function handleTranslationError(error, sourceLabel) {
-  const message = error.message || 'Translation failed.';
+  const message = error.message || "Translation failed.";
   const payload = {
     ok: false,
     error: message,
-    sourceLabel
+    sourceLabel,
   };
 
   emitTranslation(payload);
@@ -474,15 +534,15 @@ function updateState(patch) {
 }
 
 function emitState() {
-  sendToMain('state:changed', { ...state, historyCount: history.length });
+  sendToMain("state:changed", { ...state, historyCount: history.length });
 }
 
 function emitHistory() {
-  sendToMain('history:changed', [...history]);
+  sendToMain("history:changed", [...history]);
 }
 
 function emitTranslation(payload) {
-  sendToMain('translation:result', payload);
+  sendToMain("translation:result", payload);
 }
 
 function sendToMain(channel, payload) {
@@ -495,26 +555,30 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-ipcMain.handle('state:get', () => ({ ...state, historyCount: history.length }));
-ipcMain.handle('history:get', () => [...history]);
-ipcMain.handle('translate:selection', translateSelection);
-ipcMain.handle('translate:clipboard', translateClipboard);
-ipcMain.handle('translate:manual', translateManual);
-ipcMain.handle('history:clear', clearHistory);
-ipcMain.handle('monitoring:toggle', toggleClipboardMonitoring);
-ipcMain.handle('languages:update', (_event, payload = {}) => updateLanguages(payload.sourceLang, payload.targetLang));
-ipcMain.handle('shortcut:update', (_event, accelerator) => updateShortcut(accelerator));
-ipcMain.handle('clipboard:write', (_event, text) => {
-  clipboard.writeText(String(text || ''));
+ipcMain.handle("state:get", () => ({ ...state, historyCount: history.length }));
+ipcMain.handle("history:get", () => [...history]);
+ipcMain.handle("translate:selection", translateSelection);
+ipcMain.handle("translate:clipboard", translateClipboard);
+ipcMain.handle("translate:manual", translateManual);
+ipcMain.handle("history:clear", clearHistory);
+ipcMain.handle("monitoring:toggle", toggleClipboardMonitoring);
+ipcMain.handle("languages:update", (_event, payload = {}) =>
+  updateLanguages(payload.sourceLang, payload.targetLang),
+);
+ipcMain.handle("shortcut:update", (_event, accelerator) =>
+  updateShortcut(accelerator),
+);
+ipcMain.handle("clipboard:write", (_event, text) => {
+  clipboard.writeText(String(text || ""));
   return { ok: true };
 });
 
 function formatShortcutLabel(accelerator) {
-  return String(accelerator || '')
-    .replace('CommandOrControl', 'Ctrl/Cmd')
-    .replaceAll('+', ' + ');
+  return String(accelerator || "")
+    .replace("CommandOrControl", "Ctrl/Cmd")
+    .replaceAll("+", " + ");
 }
-ipcMain.handle('window:show-main', () => {
+ipcMain.handle("window:show-main", () => {
   showMainWindow();
   return { ok: true };
 });
