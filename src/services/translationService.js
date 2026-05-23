@@ -1,242 +1,176 @@
 const axios = require('axios');
 
-const DEFAULT_TIMEOUT_MS = 12000;
-const MAX_CHUNK_LENGTH = 450;
-const MAX_CACHE_ENTRIES = 250;
-const CACHE_TTL_MS = 1000 * 60 * 60;
+const DEFAULT_SOURCE_LANGUAGE = 'ja';
+const DEFAULT_TARGET_LANGUAGE = 'en';
+const MAX_CACHE_ENTRIES = 200;
+const MAX_CHUNK_LENGTH = 480;
 
-const api = axios.create({
-  timeout: DEFAULT_TIMEOUT_MS,
+const client = axios.create({
+  timeout: 12000,
   headers: {
-    'User-Agent': 'PolarisTranslator/1.0'
+    'User-Agent': 'PolarisReader/1.0'
   }
 });
 
-const translationCache = new Map();
-
-const PROVIDERS = {
-  myMemory: {
-    label: 'MyMemory',
-    translate: async (text, sourceLang, targetLang) => {
-      const response = await api.get('https://api.mymemory.translated.net/get', {
-        params: {
-          q: text,
-          langpair: `${sourceLang}|${targetLang}`
-        }
-      });
-
-      const body = response.data;
-      const translatedText = body?.responseData?.translatedText;
-
-      if (!translatedText || body?.responseStatus >= 400) {
-        throw new Error(body?.responseDetails || 'MyMemory did not return a translation');
-      }
-
-      return decodeHtmlEntities(translatedText);
-    }
-  },
-  libreTranslate: {
-    label: 'LibreTranslate',
-    translate: async (text, sourceLang, targetLang) => {
-      const response = await api.post('https://libretranslate.de/translate', {
-        q: text,
-        source: sourceLang === 'auto' ? 'auto' : sourceLang,
-        target: targetLang,
-        format: 'text'
-      });
-
-      if (!response.data?.translatedText) {
-        throw new Error('LibreTranslate did not return a translation');
-      }
-
-      return decodeHtmlEntities(response.data.translatedText);
-    }
-  }
-};
-
-let currentProvider = 'myMemory';
-
-function normalizeLanguageCode(languageCode, fallback = 'ja') {
-  if (!languageCode || typeof languageCode !== 'string') {
-    return fallback;
-  }
-
-  const normalized = languageCode.toLowerCase().trim();
-  if (normalized === 'jp') {
-    return 'ja';
-  }
-
-  return normalized;
-}
+const cache = new Map();
 
 function containsJapanese(text) {
   return /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/.test(text || '');
-}
-
-async function detectLanguage(text) {
-  if (!text || typeof text !== 'string') {
-    return 'auto';
-  }
-
-  const englishRegex = /^[a-zA-Z0-9\s.,!?;:'"()[\]{}\-_/\\@#$%^&*+=<>|`~]+$/;
-
-  if (containsJapanese(text)) {
-    return 'ja';
-  }
-
-  if (englishRegex.test(text.trim())) {
-    return 'en';
-  }
-
-  return 'auto';
-}
-
-async function translateText(text, sourceLang = 'ja', targetLang = 'en', options = {}) {
-  const cleanedText = normalizeText(text);
-  if (!cleanedText) {
-    throw new Error('No text provided for translation');
-  }
-
-  const resolvedSource = normalizeLanguageCode(
-    sourceLang === 'auto' ? await detectLanguage(cleanedText) : sourceLang,
-    'ja'
-  );
-  const resolvedTarget = normalizeLanguageCode(targetLang, 'en');
-
-  if (resolvedSource === resolvedTarget) {
-    return cleanedText;
-  }
-
-  const cacheKey = buildCacheKey(cleanedText, resolvedSource, resolvedTarget, options.provider || currentProvider);
-  const cached = getCachedTranslation(cacheKey);
-  if (cached) {
-    return cached;
-  }
-
-  const chunks = splitText(cleanedText, options.maxChunkLength || MAX_CHUNK_LENGTH);
-  const translatedChunks = [];
-
-  for (const chunk of chunks) {
-    translatedChunks.push(await translateChunk(chunk, resolvedSource, resolvedTarget, options));
-  }
-
-  const translation = translatedChunks.join('\n').replace(/\n{3,}/g, '\n\n').trim();
-  setCachedTranslation(cacheKey, translation);
-  return translation;
-}
-
-async function translateChunk(text, sourceLang, targetLang, options = {}) {
-  const preferredProvider = options.provider || currentProvider;
-  const providerOrder = [
-    preferredProvider,
-    ...Object.keys(PROVIDERS).filter((providerName) => providerName !== preferredProvider)
-  ];
-
-  const errors = [];
-
-  for (const providerName of providerOrder) {
-    const provider = PROVIDERS[providerName];
-    if (!provider) {
-      continue;
-    }
-
-    try {
-      return await provider.translate(text, sourceLang, targetLang);
-    } catch (error) {
-      errors.push(`${provider.label}: ${error.message}`);
-    }
-  }
-
-  throw new Error(`Translation failed. ${errors.join(' | ')}`);
-}
-
-function splitText(text, maxLength) {
-  if (text.length <= maxLength) {
-    return [text];
-  }
-
-  const chunks = [];
-  const paragraphs = text.split(/\n{2,}/);
-
-  for (const paragraph of paragraphs) {
-    const trimmedParagraph = paragraph.trim();
-    if (!trimmedParagraph) {
-      continue;
-    }
-
-    if (trimmedParagraph.length <= maxLength) {
-      chunks.push(trimmedParagraph);
-      continue;
-    }
-
-    const sentences = trimmedParagraph
-      .split(/(?<=[。！？.!?])\s*/)
-      .filter(Boolean);
-
-    let currentChunk = '';
-    for (const sentence of sentences) {
-      if (!currentChunk) {
-        currentChunk = sentence;
-        continue;
-      }
-
-      if (`${currentChunk}${sentence}`.length <= maxLength) {
-        currentChunk += sentence;
-      } else {
-        chunks.push(currentChunk);
-        currentChunk = sentence;
-      }
-    }
-
-    if (currentChunk) {
-      while (currentChunk.length > maxLength) {
-        chunks.push(currentChunk.slice(0, maxLength));
-        currentChunk = currentChunk.slice(maxLength);
-      }
-      if (currentChunk) {
-        chunks.push(currentChunk);
-      }
-    }
-  }
-
-  return chunks.length ? chunks : [text.slice(0, maxLength)];
 }
 
 function normalizeText(text) {
   return String(text || '')
     .replace(/\r\n/g, '\n')
     .replace(/[ \t]+\n/g, '\n')
-    .replace(/\n{4,}/g, '\n\n')
+    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
-function buildCacheKey(text, sourceLang, targetLang, provider) {
-  return `${provider}:${sourceLang}:${targetLang}:${text}`;
+function normalizeLanguage(language, fallback) {
+  const value = String(language || fallback).trim().toLowerCase();
+  return value === 'jp' ? 'ja' : value;
 }
 
-function getCachedTranslation(cacheKey) {
-  const cached = translationCache.get(cacheKey);
-  if (!cached) {
-    return null;
+function detectLanguage(text) {
+  if (containsJapanese(text)) {
+    return 'ja';
   }
 
-  if (Date.now() - cached.createdAt > CACHE_TTL_MS) {
-    translationCache.delete(cacheKey);
-    return null;
+  if (/^[a-z0-9\s.,!?;:'"()[\]{}\-_/\\@#$%^&*+=<>|`~]+$/i.test(String(text || '').trim())) {
+    return 'en';
   }
 
-  return cached.translation;
+  return DEFAULT_SOURCE_LANGUAGE;
 }
 
-function setCachedTranslation(cacheKey, translation) {
-  translationCache.set(cacheKey, {
-    translation,
-    createdAt: Date.now()
+async function translateText(text, options = {}) {
+  const original = normalizeText(text);
+  if (!original) {
+    throw new Error('No text was provided for translation.');
+  }
+
+  const sourceLang = normalizeLanguage(options.sourceLang || detectLanguage(original), DEFAULT_SOURCE_LANGUAGE);
+  const targetLang = normalizeLanguage(options.targetLang, DEFAULT_TARGET_LANGUAGE);
+
+  if (sourceLang === targetLang) {
+    return {
+      original,
+      translation: original,
+      sourceLang,
+      targetLang,
+      provider: 'local'
+    };
+  }
+
+  const cacheKey = `${sourceLang}:${targetLang}:${original}`;
+  if (cache.has(cacheKey)) {
+    return cache.get(cacheKey);
+  }
+
+  const chunks = splitText(original);
+  const translatedChunks = [];
+  let provider = 'MyMemory';
+  const errors = [];
+
+  for (const chunk of chunks) {
+    try {
+      translatedChunks.push(await translateWithMyMemory(chunk, sourceLang, targetLang));
+    } catch (error) {
+      errors.push(`MyMemory: ${error.message}`);
+      try {
+        provider = 'LibreTranslate';
+        translatedChunks.push(await translateWithLibreTranslate(chunk, sourceLang, targetLang));
+      } catch (fallbackError) {
+        errors.push(`LibreTranslate: ${fallbackError.message}`);
+        throw new Error(`Translation failed. ${errors.join(' | ')}`);
+      }
+    }
+  }
+
+  const result = {
+    original,
+    translation: translatedChunks.join('\n').trim(),
+    sourceLang,
+    targetLang,
+    provider
+  };
+
+  cacheResult(cacheKey, result);
+  return result;
+}
+
+async function translateWithMyMemory(text, sourceLang, targetLang) {
+  const response = await client.get('https://api.mymemory.translated.net/get', {
+    params: {
+      q: text,
+      langpair: `${sourceLang}|${targetLang}`
+    }
   });
 
-  if (translationCache.size > MAX_CACHE_ENTRIES) {
-    const oldestKey = translationCache.keys().next().value;
-    translationCache.delete(oldestKey);
+  const translatedText = response.data?.responseData?.translatedText;
+  if (!translatedText || response.data?.responseStatus >= 400) {
+    throw new Error(response.data?.responseDetails || 'No translation returned.');
+  }
+
+  return decodeHtmlEntities(translatedText);
+}
+
+async function translateWithLibreTranslate(text, sourceLang, targetLang) {
+  const endpoint = process.env.LIBRETRANSLATE_URL || 'https://libretranslate.com/translate';
+  const response = await client.post(endpoint, {
+    q: text,
+    source: sourceLang,
+    target: targetLang,
+    format: 'text'
+  });
+
+  if (!response.data?.translatedText) {
+    throw new Error('No translation returned.');
+  }
+
+  return decodeHtmlEntities(response.data.translatedText);
+}
+
+function splitText(text) {
+  if (text.length <= MAX_CHUNK_LENGTH) {
+    return [text];
+  }
+
+  const parts = [];
+  let current = '';
+
+  for (const sentence of text.split(/(?<=[。！？.!?])\s*/).filter(Boolean)) {
+    if ((current + sentence).length <= MAX_CHUNK_LENGTH) {
+      current += sentence;
+    } else {
+      if (current) {
+        parts.push(current);
+      }
+      current = sentence;
+    }
+  }
+
+  if (current) {
+    parts.push(current);
+  }
+
+  return parts.flatMap((part) => {
+    if (part.length <= MAX_CHUNK_LENGTH) {
+      return part;
+    }
+
+    const chunks = [];
+    for (let index = 0; index < part.length; index += MAX_CHUNK_LENGTH) {
+      chunks.push(part.slice(index, index + MAX_CHUNK_LENGTH));
+    }
+    return chunks;
+  });
+}
+
+function cacheResult(key, result) {
+  cache.set(key, result);
+  if (cache.size > MAX_CACHE_ENTRIES) {
+    cache.delete(cache.keys().next().value);
   }
 }
 
@@ -249,27 +183,9 @@ function decodeHtmlEntities(value) {
     .replace(/&gt;/g, '>');
 }
 
-function setProvider(provider) {
-  if (!PROVIDERS[provider]) {
-    throw new Error(`Unknown translation provider: ${provider}`);
-  }
-  currentProvider = provider;
-}
-
-function getProviderStatus() {
-  return {
-    currentProvider,
-    providers: Object.fromEntries(
-      Object.entries(PROVIDERS).map(([key, provider]) => [key, provider.label])
-    )
-  };
-}
-
 module.exports = {
   translateText,
-  detectLanguage,
   containsJapanese,
-  normalizeLanguageCode,
-  setProvider,
-  getProviderStatus
+  detectLanguage,
+  normalizeText
 };

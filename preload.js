@@ -1,78 +1,21 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-contextBridge.exposeInMainWorld('electronAPI', {
-  translate: (text, sourceLang, targetLang) => 
-    ipcRenderer.invoke('translate', text, sourceLang, targetLang),
-  
-  getClipboard: () => 
-    ipcRenderer.invoke('get-clipboard'),
+function subscribe(channel, callback) {
+  const listener = (_event, payload) => callback(payload);
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
 
-  getAppState: () =>
-    ipcRenderer.invoke('get-app-state'),
-
-  getHistory: () =>
-    ipcRenderer.invoke('get-history'),
-
-  translateSelection: () =>
-    ipcRenderer.invoke('translate-selection'),
-
-  translateClipboardNow: () =>
-    ipcRenderer.invoke('translate-clipboard-now'),
-
-  toggleLiveTranslation: () =>
-    ipcRenderer.invoke('toggle-live-translation'),
-
-  toggleClipboardMonitoring: () =>
-    ipcRenderer.invoke('toggle-clipboard-monitoring'),
-  
-  onTranslationUpdate: (callback) => 
-    ipcRenderer.on('translation-update', (event, data) => callback(data)),
-
-  onAppStateUpdate: (callback) =>
-    ipcRenderer.on('app-state-update', (event, data) => callback(data)),
-
-  onHistoryUpdate: (callback) =>
-    ipcRenderer.on('history-update', (event, data) => callback(data)),
-  
-  resizeWindow: (width, height) => 
-    ipcRenderer.invoke('resize-window', width, height),
-  
-  startScreenSelection: () => 
-    ipcRenderer.invoke('start-screen-selection'),
-  
-  captureScreenRegion: (bounds) => 
-    ipcRenderer.invoke('capture-screen-region', bounds),
-  
-  processOCR: (imageBuffer, bounds) => 
-    ipcRenderer.invoke('process-ocr', imageBuffer, bounds),
-  
-  showOverlay: (bounds, translation) => 
-    ipcRenderer.invoke('show-overlay', bounds, translation),
-  
-  clearOverlay: () => 
-    ipcRenderer.invoke('clear-overlay'),
-  
-  closeSelectionWindow: () => 
-    ipcRenderer.invoke('close-selection-window'),
-  
-  processSelectedRegion: (bounds) => 
-    ipcRenderer.invoke('process-selected-region', bounds),
-  
-  onOCRResult: (callback) => 
-    ipcRenderer.on('ocr-result', (event, data) => callback(data)),
-  
-  onOCRProcessingStage: (callback) => 
-    ipcRenderer.on('ocr-processing-stage', (event, data) => callback(data)),
-  
-  selectionCancelled: () => 
-    ipcRenderer.send('selection-cancelled'),
-  
-  notifySelectionComplete: () =>
-    ipcRenderer.send('selection-complete'),
-  
-  onSetTranslation: (callback) =>
-    ipcRenderer.on('set-translation', (event, data) => callback(data)),
-  
-  onTriggerOCRSnip: (callback) =>
-    ipcRenderer.on('trigger-ocr-snip', () => callback())
+contextBridge.exposeInMainWorld('polaris', {
+  getState: () => ipcRenderer.invoke('state:get'),
+  getHistory: () => ipcRenderer.invoke('history:get'),
+  translateSelection: () => ipcRenderer.invoke('translate:selection'),
+  translateClipboard: () => ipcRenderer.invoke('translate:clipboard'),
+  clearHistory: () => ipcRenderer.invoke('history:clear'),
+  toggleClipboardMonitoring: () => ipcRenderer.invoke('monitoring:toggle'),
+  showMainWindow: () => ipcRenderer.invoke('window:show-main'),
+  onState: (callback) => subscribe('state:changed', callback),
+  onTranslation: (callback) => subscribe('translation:result', callback),
+  onHistory: (callback) => subscribe('history:changed', callback),
+  onBubblePayload: (callback) => subscribe('bubble:payload', callback)
 });
